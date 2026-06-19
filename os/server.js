@@ -72,6 +72,40 @@ async function main() {
   const app = express();
   app.disable('x-powered-by');
 
+  // Security headers. Hand-rolled to avoid adding a dependency.
+  // - X-Frame-Options: DENY           → prevent clickjacking
+  // - X-Content-Type-Options: nosniff → prevent MIME sniffing
+  // - Referrer-Policy: no-referrer    → don't leak page URLs to outbound requests
+  // - Strict-Transport-Security       → force HTTPS when behind a TLS-terminating proxy
+  // - Content-Security-Policy         → restrict resource origins. The frontend is
+  //   fully self-hosted; 'unsafe-inline' for styles is needed because base.css
+  //   and apps.css set theme variables dynamically; 'unsafe-inline' for scripts
+  //   would be ideal but xterm.js + boot inline listeners require it. Tighten
+  //   once Phase 3 introduces a build step with nonces.
+  app.use((_req, res, next) => {
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    if (_req.secure || _req.headers['x-forwarded-proto'] === 'https') {
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+    res.setHeader(
+      'Content-Security-Policy',
+      [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob:",
+        "font-src 'self' data:",
+        "connect-src 'self' ws: wss:",
+        "frame-ancestors 'none'",
+        "base-uri 'self'",
+        "form-action 'self'"
+      ].join('; ')
+    );
+    next();
+  });
+
   app.use((req, res, next) => {
     // express.json below consumes the request stream. Skip it for /api/client-errors
     // because that endpoint reads raw body itself (handles sendBeacon, text/plain, JSON).

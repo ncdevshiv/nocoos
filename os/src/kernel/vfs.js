@@ -6,9 +6,27 @@ import logger from '../utils/logger.js';
 
 const log = logger.make('vfs');
 
+// Per-mount ACL. The /host mount is read-only by default — opt in to writes
+// with NOCOOS_HOST_WRITABLE=1. The previous default exposed the entire host
+// filesystem read-write to any session token, which was a HIGH-severity issue.
+// Breaking change for any deployment that relied on RW /host access; flip the
+// env var to restore the old behavior.
+function buildAcls() {
+  const hostWritable = process.env.NOCOOS_HOST_WRITABLE === '1';
+  const hostReadable = process.env.NOCOOS_HOST_READABLE !== '0';
+  if (hostWritable) {
+    log.warn('NOCOOS_HOST_WRITABLE=1: /host mount is read-write. Any authenticated session can modify files on the host filesystem.');
+  }
+  return {
+    data: { readable: true, writable: true, adminOnly: false },
+    host: { readable: hostReadable, writable: hostWritable, adminOnly: false }
+  };
+}
+const ACLS = buildAcls();
+
 const ROOTS = [
-  { virtual: '/', real: config.dataDir, kind: 'data' },
-  { virtual: '/host', real: path.resolve(config.root, '..'), kind: 'host' }
+  { virtual: '/', real: config.dataDir, kind: 'data', acl: ACLS.data },
+  { virtual: '/host', real: path.resolve(config.root, '..'), kind: 'host', acl: ACLS.host }
 ];
 
 const SYSTEM_PATHS = new Set(['/system', '/system/apps', '/system/users', '/system/sessions']);
@@ -20,6 +38,15 @@ function findRoot(virtualPath) {
     if (r.virtual !== '/' && virtualPath.startsWith(r.virtual + '/')) return r;
   }
   return ROOTS[0];
+}
+
+// Mount-level permission checks. Operations throw a clear error when denied
+// so the API layer can surface it as 403.
+function checkReadable(root) {
+  if (!root.acl.readable) throw new Error(`${root.kind}_mount_not_readable`);
+}
+function checkWritable(root) {
+  if (!root.acl.writable) throw new Error(`${root.kind}_mount_not_writable`);
 }
 
 function resolveReal(virtualPath) {
@@ -99,6 +126,8 @@ async function statInfo(realPath, name) {
 
 async function listDir(virtualPath) {
   const real = resolveReal(normalize(virtualPath));
+  const root = findRoot(normalize(virtualPath));
+  checkReadable(root);
   await ensureDir(real);
   const entries = await fsp.readdir(real, { withFileTypes: true });
   const out = [];
@@ -128,6 +157,8 @@ async function listDir(virtualPath) {
 
 async function stat(virtualPath) {
   const real = resolveReal(normalize(virtualPath));
+  const root = findRoot(normalize(virtualPath));
+  checkReadable(root);
   const st = await fsp.stat(real);
   return {
     isDirectory: st.isDirectory(),
@@ -141,6 +172,8 @@ async function stat(virtualPath) {
 
 async function readFile(virtualPath, { encoding = null, start, end } = {}) {
   const real = resolveReal(normalize(virtualPath));
+  const root = findRoot(normalize(virtualPath));
+  checkReadable(root);
   if (start !== undefined || end !== undefined) {
     const fh = await fsp.open(real, 'r');
     try {
@@ -157,6 +190,8 @@ async function readFile(virtualPath, { encoding = null, start, end } = {}) {
 
 async function writeFile(virtualPath, data, { encoding = 'utf8' } = {}) {
   const real = resolveReal(normalize(virtualPath));
+  const root = findRoot(normalize(virtualPath));
+  checkWritable(root);
   await fsp.mkdir(path.dirname(real), { recursive: true });
   if (typeof data === 'string' || Buffer.isBuffer(data)) {
     await fsp.writeFile(real, data, encoding ? { encoding } : undefined);
@@ -168,6 +203,8 @@ async function writeFile(virtualPath, data, { encoding = 'utf8' } = {}) {
 
 async function appendFile(virtualPath, data, { encoding = 'utf8' } = {}) {
   const real = resolveReal(normalize(virtualPath));
+  const root = findRoot(normalize(virtualPath));
+  checkWritable(root);
   await fsp.mkdir(path.dirname(real), { recursive: true });
   await fsp.appendFile(real, data, encoding ? { encoding } : undefined);
   return { ok: true };
@@ -175,6 +212,8 @@ async function appendFile(virtualPath, data, { encoding = 'utf8' } = {}) {
 
 async function remove(virtualPath, { recursive = false } = {}) {
   const real = resolveReal(normalize(virtualPath));
+  const root = findRoot(normalize(virtualPath));
+  checkWritable(root);
   const st = await fsp.stat(real).catch(() => null);
   if (!st) return { ok: true, existed: false };
   if (st.isDirectory()) {
@@ -193,11 +232,17 @@ async function remove(virtualPath, { recursive = false } = {}) {
 
 async function mkdir(virtualPath, { recursive = true } = {}) {
   const real = resolveReal(normalize(virtualPath));
+  const root = findRoot(normalize(virtualPath));
+  checkWritable(root);
   await fsp.mkdir(real, { recursive });
   return { ok: true };
 }
 
 async function move(src, dst) {
+  const sRoot = findRoot(normalize(src));
+  const dRoot = findRoot(normalize(dst));
+  checkWritable(sRoot);
+  checkWritable(dRoot);
   const s = resolveReal(normalize(src));
   const d = resolveReal(normalize(dst));
   await fsp.mkdir(path.dirname(d), { recursive: true });
@@ -206,6 +251,10 @@ async function move(src, dst) {
 }
 
 async function copy(src, dst) {
+  const sRoot = findRoot(normalize(src));
+  const dRoot = findRoot(normalize(dst));
+  checkReadable(sRoot);
+  checkWritable(dRoot);
   const s = resolveReal(normalize(src));
   const d = resolveReal(normalize(dst));
   const st = await fsp.stat(s);
@@ -220,7 +269,10 @@ async function copy(src, dst) {
 
 async function exists(virtualPath) {
   try {
-    await fsp.stat(resolveReal(normalize(virtualPath)));
+    const norm = normalize(virtualPath);
+    const root = findRoot(norm);
+    checkReadable(root);
+    await fsp.stat(resolveReal(norm));
     return true;
   } catch {
     return false;
@@ -248,15 +300,18 @@ function boot() {
   fs.mkdirSync(path.join(config.dataDir, 'system'), { recursive: true });
   fs.mkdirSync(path.join(config.dataDir, 'tmp'), { recursive: true });
   const welcome = path.join(config.dataDir, 'home', 'user', 'README.md');
-  if (!fs.existsSync(welcome)) {
-    fs.writeFileSync(welcome, `# Welcome to NocoOS
+if (!fs.existsSync(welcome)) {
+      const hostDesc = ACLS.host.writable
+        ? 'the host machine is mounted read-write at /host (set NOCOOS_HOST_WRITABLE=0 to disable)'
+        : 'the host machine is mounted read-only at /host (set NOCOOS_HOST_WRITABLE=1 to enable writes)';
+      fs.writeFileSync(welcome, `# Welcome to NocoOS
 
 This is your personal space inside NocoOS.
 
 - **Terminal**: open it from the taskbar to run any shell command.
 - **File Manager**: browse your files at /home/user.
 - **App Installer**: install npm/pnpm/bun packages and launch them from the desktop.
-- **Host filesystem**: the host machine is mounted read-write at /host.
+- **Host filesystem**: ${hostDesc}.
 
 ## Quick commands
 \`\`\`
@@ -265,7 +320,7 @@ cd /apps
 pnpm add <package>
 \`\`\`
 `, 'utf8');
-  }
+    }
   const sysInfo = path.join(config.dataDir, 'system', 'info.json');
   if (!fs.existsSync(sysInfo)) {
     fs.writeFileSync(sysInfo, JSON.stringify({
@@ -291,5 +346,7 @@ export default {
   copy,
   exists,
   watch,
-  mime
+  mime,
+  // Expose mount ACLs for diagnostics and tests.
+  mounts: ROOTS.map((r) => ({ virtual: r.virtual, kind: r.kind, acl: { ...r.acl } }))
 };
