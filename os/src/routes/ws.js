@@ -1,5 +1,6 @@
 import { WebSocketServer } from 'ws';
 import { URL } from 'node:url';
+import vm from 'node:vm';
 import { spawn } from 'node:child_process';
 import sessionMgr from '../kernel/session.js';
 import termMgr from '../kernel/terminal.js';
@@ -7,6 +8,31 @@ import pkg from '../kernel/package-manager.js';
 import logger from '../utils/logger.js';
 
 const log = logger.make('ws');
+
+// Sandboxed shell global. Only safe, host-agnostic primitives are exposed.
+// No fs, no child_process, no require — the user can run JS expressions
+// against in-memory data without being able to read the disk or spawn
+// processes via the `exec` channel.
+const SAFE_GLOBALS = {
+  Math, JSON, Date, Object, Array, String, Number, Boolean, Symbol,
+  RegExp, Error, Map, Set, WeakMap, WeakSet, Promise, URL, URLSearchParams,
+  parseInt, parseFloat, isNaN, isFinite, encodeURIComponent, decodeURIComponent,
+  console: {
+    log: (...args) => args.map(String).join(' '),
+    info: (...args) => args.map(String).join(' '),
+    warn: (...args) => args.map(String).join(' '),
+    error: (...args) => args.map(String).join(' ')
+  }
+};
+
+function runSandboxed(code) {
+  const script = new vm.Script(code, { filename: 'nocoos-shell' });
+  const context = vm.createContext(SAFE_GLOBALS, {
+    name: 'nocoos-shell',
+    codeGeneration: { strings: false, wasm: false }
+  });
+  return script.runInContext(context, { timeout: 1000, displayErrors: false });
+}
 
 function authFromRequest(req) {
   try {
@@ -77,23 +103,24 @@ function bindPackage(ws, jobId) {
 }
 
 function bindShell(ws, session) {
-  // Defense in depth: even though the upgrade handler now gates /ws/shell on
+  // Defense in depth: even though the upgrade handler gates /ws/shell on
   // isAdmin, re-check here so a future refactor of the upgrade path can't
-  // accidentally expose eval/spawn to a non-admin session. The full sandbox
-  // (node:vm with restricted global) will replace this in Phase 5.
+  // accidentally expose eval/spawn to a non-admin session.
   if (!session?.isAdmin) {
     safeSend(ws, { event: 'error', error: 'admin_required' });
     ws.close();
     return () => {};
   }
-  let buffer = '';
   safeSend(ws, { event: 'hello', prompt: 'nocoos-shell>' });
   ws.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
     if (msg.type === 'eval') {
       try {
-        const result = (0, eval)(msg.code);
+        // Run inside a vm.Script context with a frozen, allow-listed global.
+        // The previous (0, eval)() call ran in the server's main context and
+        // could read process.env, require modules, spawn processes, etc.
+        const result = runSandboxed(msg.code);
         safeSend(ws, { event: 'result', value: typeof result === 'object' ? JSON.stringify(result) : String(result) });
       } catch (err) {
         safeSend(ws, { event: 'result', error: err.message });

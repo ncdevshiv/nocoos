@@ -81,6 +81,10 @@ class NocoWindow {
       prev: null
     };
     this.handlers = { onClose: null, onFocus: null, onResize: null, onMove: null };
+    // Listeners registered by _bindDrag / _bindResizers. close() invokes
+    // these to remove the `window`-scoped listeners that would otherwise
+    // accumulate per opened window.
+    this._cleanupFns = [];
     this.el = this._build();
     this.body = this.el.querySelector('.window-body');
   }
@@ -186,6 +190,13 @@ class NocoWindow {
     handle.addEventListener('mousedown', onDown);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
+    // Track listeners so close() can remove them. Without this, every
+    // opened-then-closed window leaks 2 listeners on `window` indefinitely.
+    this._cleanupFns.push(() => {
+      handle.removeEventListener('mousedown', onDown);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    });
   }
 
   _bindResizers(el) {
@@ -216,7 +227,8 @@ class NocoWindow {
         focusWindow(this);
       });
     }
-    window.addEventListener('mousemove', (e) => {
+    // Single shared move/up handler, registered once. Removed on close().
+    const onMove = (e) => {
       if (!active) return;
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
@@ -240,12 +252,19 @@ class NocoWindow {
       this.state.x = newL;
       this.state.y = newT;
       if (this.handlers.onResize) try { this.handlers.onResize(this.summary()); } catch {}
-    });
-    window.addEventListener('mouseup', () => {
+    };
+    const onUp = () => {
       if (active) {
         active = null;
         document.body.classList.remove('dragging');
       }
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    // Track listeners for cleanup on close().
+    this._cleanupFns.push(() => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
     });
   }
 
@@ -350,6 +369,12 @@ class NocoWindow {
         if (r === false) return;
       } catch {}
     }
+    // Run listener cleanup before removing the element so event handlers
+    // can't fire on detached nodes.
+    for (const fn of this._cleanupFns) {
+      try { fn(); } catch {}
+    }
+    this._cleanupFns.length = 0;
     this.el.remove();
     windows.delete(this.id);
     emit('close', this.summary());

@@ -68,7 +68,7 @@ const BUILTIN = [
     icon: 'activity',
     category: 'system',
     builtin: true,
-    pinned: false,
+    pinned: true,
     entry: '/js/apps/monitor.js',
     singleton: false
   },
@@ -79,7 +79,7 @@ const BUILTIN = [
     icon: 'globe',
     category: 'internet',
     builtin: true,
-    pinned: false,
+    pinned: true,
     entry: '/js/apps/browser.js',
     singleton: false
   },

@@ -229,6 +229,23 @@ async function main() {
   attachWebSocket(server);
   const hmr = attachHmr(server);
 
+  // Centralized cleanup. Idempotent — safe to call multiple times. Used by
+  // exit, beforeExit, signal handlers, and the listen-failure path so the
+  // lock + registry entry are always released, regardless of how the process
+  // is shutting down.
+  let cleanedUp = false;
+  function cleanup() {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    try { registry.remove(lockInfo.name); } catch {}
+    try { lock.releaseSync(); } catch {}
+  }
+
+  // Register cleanup at module load, BEFORE listen(), so it runs even if
+  // listen() fails (port conflict, lock conflict, package-manager failure).
+  process.on('exit', cleanup);
+  process.on('beforeExit', cleanup);
+
   server.listen(chosenPort, config.host, () => {
     log.info(`NocoOS listening on http://${config.host}:${chosenPort}`);
     log.info(`Instance: ${lockInfo.name} | dataDir: ${config.dataDir}`);
@@ -253,9 +270,14 @@ async function main() {
     registry.upsert(regEntry);
     const hb = registry.startHeartbeat(regEntry, config.root, 5000);
     log.info('registered in cross-instance registry', { path: registry.paths.projectRoot });
-    process.on('exit', () => { try { registry.remove(lockInfo.name); lock.releaseSync(); } catch {} });
-    process.on('beforeExit', () => { try { registry.remove(lockInfo.name); lock.releaseSync(); } catch {} });
     heartbeatHandle = hb;
+  });
+
+  // Register server.error handler so listen() failures still trigger cleanup.
+  server.on('error', (err) => {
+    log.error('server error', { err: err.message });
+    cleanup();
+    process.exit(1);
   });
 
   let heartbeatHandle = null;
@@ -264,23 +286,20 @@ async function main() {
     log.info(`received ${signal}, shutting down`);
     hmr.disable();
     if (heartbeatHandle) registry.stopHeartbeat(heartbeatHandle);
-    try { registry.remove(lockInfo.name); } catch {}
+    cleanup();
     // Force-close keepalive sockets so server.close() can complete.
     if (typeof server.closeIdleConnections === 'function') {
       try { server.closeIdleConnections(); } catch {}
     }
     server.close(() => {
       log.info('server closed cleanly');
-      lock.releaseSync();
-      // Re-remove from registry in case heartbeat wrote a fresh entry during shutdown.
-      try { registry.remove(lockInfo.name); } catch {}
+      cleanup();
       process.exit(0);
     });
     // Hard timeout — kill the process even if connections hang.
     setTimeout(() => {
       log.warn('shutdown timeout, forcing exit');
-      try { lock.releaseSync(); } catch {}
-      try { registry.remove(lockInfo.name); } catch {}
+      cleanup();
       process.exit(1);
     }, 3000);
   };

@@ -426,6 +426,11 @@ export function createApiRouter() {
     const list = registry.listWithStatus();
     const inst = list.find((i) => i.name === req.params.name);
     if (!inst) return res.status(404).json({ error: 'not_found' });
+    // Remove the registry entry BEFORE sending the signal. On Windows,
+    // SIGTERM maps to TerminateProcess and the server's own cleanup can't
+    // run, so the CLI's removal is the only chance to keep the registry
+    // consistent with reality.
+    try { registry.remove(req.params.name); } catch {}
     try {
       process.kill(inst.pid, 'SIGTERM');
       res.json({ ok: true, pid: inst.pid });

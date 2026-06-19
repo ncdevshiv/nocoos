@@ -39,8 +39,16 @@ async function stopServer(proc) {
   ]);
 }
 
+// Each test picks a base port from process.pid to avoid collisions across
+// parallel `node --test` runs (each Node process has a unique pid, so
+// port ranges don't overlap). Final ports still get a small random offset
+// for the conflict test (which spawns two servers on different ports).
+function basePort() {
+  return 32000 + (process.pid % 1000);
+}
+
 test('multi-instance: two servers with different instance names coexist', { timeout: 30000 }, async () => {
-  const port1 = 32000 + Math.floor(Math.random() * 50);
+  const port1 = basePort() + Math.floor(Math.random() * 50);
   const port2 = port1 + 50;
   const proc1 = await startServer(port1, { NOCOOS_INSTANCE_NAME: 'multi-a-' + process.pid });
   let proc2;
@@ -79,7 +87,7 @@ test('multi-instance: two servers with different instance names coexist', { time
 });
 
 test('multi-instance: same instance name on different ports — second refused', { timeout: 20000 }, async () => {
-  const port1 = 32100 + Math.floor(Math.random() * 50);
+  const port1 = basePort() + 100 + Math.floor(Math.random() * 50);
   const port2 = port1 + 50;
   const name = 'conflict-' + process.pid;
   const proc1 = await startServer(port1, { NOCOOS_INSTANCE_NAME: name });
@@ -115,7 +123,7 @@ test('multi-instance: same instance name on different ports — second refused',
 
 test('multi-instance: default instance has its own data dir', async () => {
   // Just verify that boot creates data dir
-  const port = 32200 + Math.floor(Math.random() * 50);
+  const port = basePort() + 200 + Math.floor(Math.random() * 50);
   const proc = await startServer(port, { NOCOOS_INSTANCE_NAME: 'dflt-' + process.pid });
   try {
     // Give it a moment

@@ -1,4 +1,4 @@
-import { randomBytes, createHash } from 'node:crypto';
+import { randomBytes, createHash, createHmac } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
@@ -6,6 +6,11 @@ import logger from '../utils/logger.js';
 
 const log = logger.make('session');
 const USERS_FILE = path.join(config.dataDir, 'system', 'users.json');
+const DEFAULT_SECRET = 'nocoos-dev-secret-change-me';
+const secret = config.sessionSecret || DEFAULT_SECRET;
+if (secret === DEFAULT_SECRET) {
+  log.warn('using default session secret — set NOCOOS_SESSION_SECRET to a long random string for production');
+}
 
 function loadUsers() {
   try {
@@ -27,6 +32,43 @@ function saveUsers(users) {
 
 function hashPassword(pw, salt) {
   return createHash('sha256').update(`${salt}::${pw}`).digest('hex');
+}
+
+// HMAC-signed token: <payload>.<signature>
+//   payload   = base64url(JSON({u:username, d:displayName, a:isAdmin, e:expiresAt}))
+//   signature = base64url(HMAC-SHA256(payload, secret))
+// The signature binds the token to the server's session secret, so a stolen
+// token alone (without the secret) can't be forged or used by an attacker
+// running their own NocoOS instance.
+function b64urlEncode(buf) {
+  return Buffer.from(buf).toString('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function b64urlDecode(str) {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (str.length % 4) str += '=';
+  return Buffer.from(str, 'base64');
+}
+function signToken(payload) {
+  const json = JSON.stringify(payload);
+  const b64 = b64urlEncode(json);
+  const sig = b64urlEncode(createHmac('sha256', secret).update(b64).digest());
+  return `${b64}.${sig}`;
+}
+function verifyToken(token) {
+  const dot = token.indexOf('.');
+  if (dot === -1) return null;
+  const b64 = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  const expected = b64urlEncode(createHmac('sha256', secret).update(b64).digest());
+  // Constant-time comparison to avoid timing attacks on the signature.
+  if (sig.length !== expected.length) return null;
+  let diff = 0;
+  for (let i = 0; i < sig.length; i++) diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i);
+  if (diff !== 0) return null;
+  try {
+    return JSON.parse(b64urlDecode(b64).toString('utf8'));
+  } catch { return null; }
 }
 
 function defaultPrefs() {
@@ -145,7 +187,7 @@ class SessionManager {
     this.users.splice(idx, 1);
     saveUsers(this.users);
     for (const [token, sess] of this.tokens.entries()) {
-      if (sess.username === username) this.tokens.delete(token);
+      if (sess.u === username) this.tokens.delete(token);
     }
     return true;
   }
@@ -153,14 +195,15 @@ class SessionManager {
   login(username, password) {
     const result = this.verify(username, password);
     if (!result.ok) return result;
-    const token = randomBytes(32).toString('hex');
-    this.tokens.set(token, {
-      username: result.user.username,
-      displayName: result.user.displayName,
-      isAdmin: result.user.isAdmin,
-      createdAt: Date.now(),
-      expiresAt: Date.now() + 24 * 60 * 60 * 1000
-    });
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+    const payload = {
+      u: result.user.username,
+      d: result.user.displayName,
+      a: result.user.isAdmin,
+      e: expiresAt
+    };
+    const token = signToken(payload);
+    this.tokens.set(token, payload);
     return { ok: true, token, user: result.user };
   }
 
@@ -170,19 +213,27 @@ class SessionManager {
 
   resolve(token) {
     if (!token) return null;
-    const sess = this.tokens.get(token);
-    if (!sess) return null;
-    if (Date.now() > sess.expiresAt) {
-      this.tokens.delete(token);
-      return null;
-    }
-    return sess;
+    // Verify HMAC signature first (cheap, no DB). Then check expiry and
+    // the in-memory revocation set.
+    const payload = verifyToken(token);
+    if (!payload) return null;
+    if (Date.now() > payload.e) return null;
+    if (!this.tokens.has(token)) return null;
+    // Translate compact payload keys back to the canonical session shape
+    // used by the rest of the kernel.
+    return {
+      username: payload.u,
+      displayName: payload.d,
+      isAdmin: !!payload.a,
+      createdAt: payload.e - 24 * 60 * 60 * 1000,
+      expiresAt: payload.e
+    };
   }
 
   _cleanup() {
     const now = Date.now();
     for (const [token, sess] of this.tokens.entries()) {
-      if (now > sess.expiresAt) this.tokens.delete(token);
+      if (now > sess.e) this.tokens.delete(token);
     }
   }
 

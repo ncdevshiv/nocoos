@@ -92,6 +92,26 @@ async function printStatus() {
   }
 }
 
+// Authenticate against a running instance and return a bearer token.
+// Used by stopInstance (admin) and attachInstance (admin). The CLI no
+// longer reaches into the server's kernel module path; it is a pure client.
+async function authenticate(inst, username, password) {
+  const res = await fetch(`http://localhost:${inst.port}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`login failed: ${err.error || res.status}`);
+  }
+  const data = await res.json();
+  if (!data.user || !data.user.isAdmin) {
+    throw new Error('admin privileges required');
+  }
+  return data.token;
+}
+
 async function stopInstance(name) {
   const { instances } = await readRegistry();
   const inst = instances.find((i) => i.name === name);
@@ -99,20 +119,38 @@ async function stopInstance(name) {
     console.error(`No instance named "${name}" found.`);
     process.exit(1);
   }
-  // Always remove from registry immediately — on Windows SIGTERM is force-kill
-  // (no graceful shutdown handler runs), so the server can't clean itself up.
-  const { default: registry } = await import('../os/src/kernel/registry.js');
-  registry.remove(name);
   if (!isAlive(inst.pid)) {
-    console.log(`Instance "${name}" (pid ${inst.pid}) was not running. Registry entry cleared.`);
+    console.log(`Instance "${name}" (pid ${inst.pid}) was not running.`);
     return;
   }
-  console.log(`Stopping instance "${name}" (pid ${inst.pid})...`);
-  try { process.kill(inst.pid); }
-  catch (err) {
-    console.error('Failed to stop:', err.message);
+  // Prompt for admin credentials. The CLI is now a pure HTTP client; it
+  // calls /api/instances/:name/stop which both removes the registry entry
+  // and sends SIGTERM (see api.js).
+  const readline = await import('node:readline');
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });
+  const ask = (q) => new Promise((res) => rl.question(q, res));
+  const username = await ask('admin username: ');
+  const password = await ask('admin password: ');
+  rl.close();
+  let token;
+  try {
+    token = await authenticate(inst, username, password);
+  } catch (err) {
+    console.error('Auth failed:', err.message);
     process.exit(1);
   }
+  console.log(`Stopping instance "${name}" (pid ${inst.pid}) via HTTP...`);
+  const res = await fetch(`http://localhost:${inst.port}/api/instances/${encodeURIComponent(name)}/stop`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    console.error('Stop failed:', err.error || res.status);
+    process.exit(1);
+  }
+  // Wait for the process to actually exit (server's shutdown handler
+  // closes the listening socket before exit).
   for (let i = 0; i < 30; i++) {
     if (!isAlive(inst.pid)) {
       console.log(`Stopped.`);
@@ -145,18 +183,11 @@ async function attachInstance(name) {
   const username = await new Promise((resolve) => rl.question('username: ', resolve));
   const password = await new Promise((resolve) => rl.question('password: ', (a) => resolve(a)));
 
-  const loginRes = await fetch(`http://localhost:${inst.port}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password })
-  });
-  if (!loginRes.ok) {
-    console.error(`Login failed: ${loginRes.status}`);
-    process.exit(1);
-  }
-  const { token, user } = await loginRes.json();
-  if (!user.isAdmin) {
-    console.error('Attach requires an admin account.');
+  let token;
+  try {
+    token = await authenticate(inst, username, password);
+  } catch (err) {
+    console.error(err.message);
     process.exit(1);
   }
 
