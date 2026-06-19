@@ -76,7 +76,16 @@ function bindPackage(ws, jobId) {
   return () => {};
 }
 
-function bindShell(ws) {
+function bindShell(ws, session) {
+  // Defense in depth: even though the upgrade handler now gates /ws/shell on
+  // isAdmin, re-check here so a future refactor of the upgrade path can't
+  // accidentally expose eval/spawn to a non-admin session. The full sandbox
+  // (node:vm with restricted global) will replace this in Phase 5.
+  if (!session?.isAdmin) {
+    safeSend(ws, { event: 'error', error: 'admin_required' });
+    ws.close();
+    return () => {};
+  }
   let buffer = '';
   safeSend(ws, { event: 'hello', prompt: 'nocoos-shell>' });
   ws.on('message', (raw) => {
@@ -129,7 +138,14 @@ export function attachWebSocket(server) {
         }
         bindPackage(ws, jobId);
       } else if (url.pathname === '/ws/shell') {
-        bindShell(ws);
+        // Admin-only: bindShell() runs (0, eval)() and spawn() with shell:true,
+        // which is full RCE on the server process. Gate at upgrade so non-admin
+        // clients get a 403-style close before opening the socket.
+        if (!session?.isAdmin) {
+          safeSend(ws, { event: 'error', error: 'admin_required' });
+          return ws.close();
+        }
+        bindShell(ws, session);
       } else {
         safeSend(ws, { event: 'error', error: 'unknown_channel' });
         ws.close();

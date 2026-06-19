@@ -228,10 +228,6 @@ export async function open() {
       ws.addEventListener('error', () => { onText('\n[ws error]\n'); resolve(-1); });
     });
   }
-      });
-      ws.addEventListener('error', () => { onText('\n[ws error]\n'); resolve(-1); });
-    });
-  }
 
   function renderTabs() {
     for (const t of root.querySelectorAll('.installer-tab')) {

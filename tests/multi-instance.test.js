@@ -85,6 +85,8 @@ test('multi-instance: same instance name on different ports — second refused',
   const proc1 = await startServer(port1, { NOCOOS_INSTANCE_NAME: name });
   let proc2;
   try {
+    // Capture stderr BEFORE waiting for exit so we don't miss INSTANCE_RUNNING.
+    let stderr = '';
     // Try to start a second with the same instance name → should fail (refuse)
     proc2 = spawn(process.execPath, ['os/server.js'], {
       cwd: ROOT,
@@ -96,19 +98,18 @@ test('multi-instance: same instance name on different ports — second refused',
       },
       stdio: ['ignore', 'pipe', 'pipe']
     });
+    proc2.stderr.on('data', (d) => { stderr += d.toString(); });
 
     // Wait for second to exit (it should exit with INSTANCE_RUNNING)
     const exitCode = await new Promise((r) => proc2.once('exit', r));
     assert.notEqual(exitCode, 0, 'second instance should exit non-zero');
-
-    // Capture stderr to confirm error message
-    let stderr = '';
-    proc2.stderr.on('data', (d) => { stderr += d.toString(); });
-    // We may have missed the data events, just verify the process exited
     assert.ok(stderr.includes('INSTANCE_RUNNING') || exitCode === 1, 'exited due to lock conflict');
   } finally {
     await stopServer(proc1);
-    if (proc2 && proc2.exitCode === null) await stopServer(proc2);
+    // Always release proc2 regardless of exit state. stopServer() no-ops on
+    // already-exited procs, so calling it unconditionally is safe and prevents
+    // orphaned processes if the test path changes in the future.
+    if (proc2) await stopServer(proc2);
   }
 });
 

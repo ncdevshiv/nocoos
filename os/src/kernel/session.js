@@ -43,7 +43,10 @@ function ensureDefaultUser() {
       createdAt: Date.now()
     });
     saveUsers(users);
-    log.info('default user created (username: user, password: nocoos)');
+    // Don't log the password — the redaction helper only redacts object fields,
+    // not substrings of free-form messages. The bootstrap password is documented
+    // in README.md; users who need to reset it can delete os/data/system/users.json.
+    log.info('default user created (username: user; see README for bootstrap password)');
   }
   return users;
 }

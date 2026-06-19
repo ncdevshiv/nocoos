@@ -254,18 +254,21 @@ export function createApiRouter() {
   });
 
   // Cross-instance registry endpoints — manager UI uses these.
-  router.get('/instances', (_req, res) => {
+  // These were previously unauthenticated, allowing anyone reaching the HTTP
+  // port to enumerate every NocoOS instance on the host and SIGTERM them.
+  // Now require auth for read and admin for the destructive stop action.
+  router.get('/instances', requireAuth, (_req, res) => {
     res.json({ instances: registry.listWithStatus() });
   });
 
-  router.get('/instances/:name', (req, res) => {
+  router.get('/instances/:name', requireAuth, (req, res) => {
     const list = registry.listWithStatus();
     const inst = list.find((i) => i.name === req.params.name);
     if (!inst) return res.status(404).json({ error: 'not_found' });
     res.json(inst);
   });
 
-  router.post('/instances/:name/stop', (req, res) => {
+  router.post('/instances/:name/stop', requireAuth, requireAdmin, (req, res) => {
     const list = registry.listWithStatus();
     const inst = list.find((i) => i.name === req.params.name);
     if (!inst) return res.status(404).json({ error: 'not_found' });

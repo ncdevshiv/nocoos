@@ -80,7 +80,11 @@ function validateFileSync(filePath) {
   const cached = cacheGet(filePath, stat.mtimeMs);
   if (cached) return cached.ok ? { ok: true, cached: true } : { ok: false, error: cached.error, cached: true };
 
-  const isModule = filePath.endsWith('.mjs') || (filePath.endsWith('.js') && /^\s*(?:import|export)\s/m.test(fs.readFileSync(filePath, 'utf8').slice(0, 256)));
+  // ESM detection: scan the entire file for top-level import/export statements.
+  // Earlier versions only scanned the first 256 bytes, which misclassified files
+  // whose header comment pushed the first `import` past that window as CommonJS.
+  // Results are cached by mtime so the full-file scan only runs on edit.
+  const isModule = filePath.endsWith('.mjs') || (filePath.endsWith('.js') && /^\s*(?:import|export)\s/m.test(fs.readFileSync(filePath, 'utf8')));
   const child = spawnSync(process.execPath, ['--check', isModule ? '--input-type=module' : '--input-type=commonjs'], {
     input: fs.readFileSync(filePath),
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -109,7 +113,8 @@ async function validateFile(filePath) {
   if (inflight) return inflight;
 
   const promise = new Promise((resolve) => {
-    const isModule = filePath.endsWith('.mjs') || filePath.endsWith('.js') && /^\s*(?:import|export)\s/m.test(fs.readFileSync(filePath, 'utf8').slice(0, 256));
+    // ESM detection: scan the entire file (see comment on validateFileSync above).
+    const isModule = filePath.endsWith('.mjs') || filePath.endsWith('.js') && /^\s*(?:import|export)\s/m.test(fs.readFileSync(filePath, 'utf8'));
     const child = spawn(process.execPath, ['--check', isModule ? '--input-type=module' : '--input-type=commonjs'], { stdio: ['pipe', 'pipe', 'pipe'] });
     let stderr = '';
     child.stderr.on('data', (d) => (stderr += d.toString()));
