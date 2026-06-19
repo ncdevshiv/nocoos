@@ -206,6 +206,7 @@ export function createApiRouter() {
 
   router.post('/system/procs/:id/kill', requireAuth, requireAdmin, express.json(), asyncHandler(async (req, res) => {
     const result = await procMgr.kill(req.params.id, { signal: req.body?.signal || 'SIGTERM', force: !!req.body?.force });
+    if (!result.ok && result.error === 'not_found') return res.status(404).json(result);
     res.json(result);
   }));
 

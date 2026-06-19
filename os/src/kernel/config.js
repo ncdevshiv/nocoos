@@ -60,7 +60,11 @@ export const config = {
     return path.join(ROOT, 'data-' + this.instanceName);
   },
   get appsDir() {
-    return str('NOCOOS_APPS_DIR', '') || path.join(this.dataDir, 'apps');
+    // NOCOOS_APPS_DIR overrides; default is <projectRoot>/../apps which is the
+    // workspace location documented in README.md and listed in pnpm-workspace.yaml.
+    // Note: dataDir is inside ROOT (os/), so we go up one level to reach
+    // <projectRoot>/apps.
+    return str('NOCOOS_APPS_DIR', '') || path.join(this.dataDir, '..', '..', 'apps');
   },
   publicDir: path.join(ROOT, 'public'),
   hostInfo: {
