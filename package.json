@@ -13,11 +13,18 @@
     "os": "node os/server.js",
     "lint": "node bin/lint.js",
     "nocoos": "node bin/nocoos.js",
-    "test": "node --test --test-concurrency=1 tests/*.test.js"
+    "test": "node --test --test-concurrency=1 tests/*.test.js",
+    "test:unit": "node --test --test-concurrency=1 tests/config.test.js tests/registry.test.js tests/lock.test.js tests/session.test.js tests/parser.test.js tests/port-finder.test.js tests/terminal.test.js tests/logger.test.js tests/metrics.test.js tests/package-manager.test.js tests/kernel.test.js tests/hmr-syntax.test.js tests/lint-and-hmr.test.js tests/multi-instance.test.js tests/client-errors.test.js",
+    "test:e2e:backend": "node tests/e2e-backend.test.js",
+    "test:e2e:frontend": "node tests/e2e-frontend.test.js",
+    "test:e2e": "pnpm run test:e2e:backend && pnpm run test:e2e:frontend",
+    "test:all": "pnpm run lint && pnpm run test:unit && pnpm run test:e2e"
   },
   "dependencies": {
     "express": "^4.21.2",
     "ws": "^8.18.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "playwright": "^1.61.0"
+  }
 }

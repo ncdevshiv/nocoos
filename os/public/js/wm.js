@@ -133,10 +133,11 @@ class NocoWindow {
 
     const body = document.createElement('div');
     body.className = 'window-body';
-    // allowSelect is read from the window's own opts (passed to wm.create)
-    // and applied here. Previously this checked the class via opts_allowSelect,
-    // which was self-referential (the class hadn't been added yet).
-    if (opts.allowSelect) body.classList.add('allow-select');
+    // allowSelect is read from this.opts (set in the constructor from the
+    // opts arg passed to wm.create). Previously this referenced a bare
+    // `opts` identifier that was not in scope inside _build(), throwing
+    // ReferenceError and silently breaking every window creation.
+    if (this.opts && this.opts.allowSelect) body.classList.add('allow-select');
 
     el.appendChild(header);
     el.appendChild(body);
@@ -381,9 +382,12 @@ class NocoWindow {
     emit('change', { reason: 'close', window: this.summary() });
   }
 
+  // Event subscription. Accepts both 'close' (preferred) and 'onClose'
+  // (legacy) names — the handlers object stores them with the 'on' prefix.
   on(event, cb) {
-    if (!(event in this.handlers)) throw new Error(`Unknown window event: ${event}`);
-    this.handlers[event] = cb;
+    const key = event.startsWith('on') ? event : `on${event[0].toUpperCase()}${event.slice(1)}`;
+    if (!(key in this.handlers)) throw new Error(`Unknown window event: ${event}`);
+    this.handlers[key] = cb;
     return this;
   }
 }

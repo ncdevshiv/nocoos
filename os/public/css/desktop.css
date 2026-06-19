@@ -220,6 +220,9 @@
   justify-content: center;
   padding: 2rem;
 }
+/* Restore [hidden] semantics — `display: flex` above would otherwise override
+   the user-agent default of `display: none` for the hidden attribute. */
+.modal-overlay[hidden] { display: none; }
 
 .modal-window {
   background: var(--bg-1);

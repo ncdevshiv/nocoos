@@ -89,19 +89,38 @@ async function main() {
     if (_req.secure || _req.headers['x-forwarded-proto'] === 'https') {
       res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     }
-    res.setHeader(
-      'Content-Security-Policy',
-      [
-        "default-src 'self'",
-        "script-src 'self' 'unsafe-inline'",
-        "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' data: blob:",
-        "font-src 'self' data:",
-        "connect-src 'self' ws: wss:",
-        "frame-ancestors 'none'",
-        "base-uri 'self'",
-        "form-action 'self'"
-      ].join('; ')
+    // Content-Security-Policy: fully self-hosted, no external origins allowed.
+//   default-src 'self'             — only same-origin resources by default
+//   script-src 'self' 'unsafe-inline' — inline scripts allowed for the boot
+//     shim and HMR; tighten with nonces if a build step is added later
+//   style-src 'self' 'unsafe-inline'  — inline styles for theme variables
+//   img-src 'self' data: blob:      — base64 SVG icons + canvas thumbnails
+//   font-src 'self' data:           — base64 icon fonts if any
+//   connect-src 'self' ws: wss:    — same-origin + WebSocket for terminals
+//   frame-ancestors 'none'          — block clickjacking
+//   base-uri 'self'                 — block <base> hijacking
+//   form-action 'self'              — only same-origin form submissions
+//   object-src 'none'               — block <object>/<embed>/<applet>
+//   frame-src 'none'                — block <iframe>
+// If you need to load a CDN resource, vendor it locally under
+// os/public/vendor/ and reference it via a relative path. Do NOT add
+// https:// origins to this CSP — that violates the "local, isolated,
+// portable" deployment requirement.
+res.setHeader(
+  'Content-Security-Policy',
+  [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "connect-src 'self' ws: wss:",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
+    "frame-src 'none'"
+  ].join('; ')
     );
     next();
   });

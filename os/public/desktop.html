@@ -10,9 +10,8 @@
   <link rel="stylesheet" href="/css/window.css" />
   <link rel="stylesheet" href="/css/taskbar.css" />
   <link rel="stylesheet" href="/css/apps.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/xterm-addon-web-links.css" />
+  <!-- xterm assets are vendored under /vendor/xterm/ — no CDN, fully local. -->
+  <link rel="stylesheet" href="/vendor/xterm/css/xterm.css" />
 </head>
 <body>
   <div id="root" class="desktop-root">
@@ -87,10 +86,10 @@
     </div>
   </div>
 
-  <!-- xterm.js and addons from CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js"></script>
+  <!-- xterm.js and addons — vendored locally under /vendor/xterm/. No CDN. -->
+  <script src="/vendor/xterm/lib/xterm.js"></script>
+  <script src="/vendor/xterm/lib/xterm-addon-fit.js"></script>
+  <script src="/vendor/xterm/lib/xterm-addon-web-links.js"></script>
 
   <script type="module" src="/js/core/api.js"></script>
   <script type="module" src="/js/core/notify.js"></script>
@@ -100,6 +99,8 @@
   <script type="module" src="/js/startmenu.js"></script>
   <script type="module" src="/js/contextmenu.js"></script>
   <script type="module" src="/js/desktop.js"></script>
+  <!-- Entry point: initializes all desktop subsystems in dependency order. -->
+  <script type="module" src="/js/boot-desktop.js"></script>
 
   <script type="module" src="/js/apps/terminal.js"></script>
   <script type="module" src="/js/apps/filemanager.js"></script>

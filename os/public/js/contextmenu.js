@@ -2,9 +2,12 @@
 
 let menuEl = null;
 let itemsEl = null;
+let initialized = false;
 
-function ensure() {
-  if (menuEl) return;
+export function init() {
+  if (initialized) return;
+  initialized = true;
+  // Pre-cache element refs and bind document-level dismiss handlers.
   menuEl = document.getElementById('context-menu');
   itemsEl = document.getElementById('context-menu-items');
   document.addEventListener('mousedown', (e) => {
@@ -15,6 +18,14 @@ function ensure() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && menuEl && !menuEl.hidden) hide();
   });
+}
+
+// Legacy: ensure() was the original init function, called lazily by show().
+// Now both the explicit init() and show() share the same lazy ensure path.
+function ensure() {
+  init();
+  if (!menuEl) menuEl = document.getElementById('context-menu');
+  if (!itemsEl) itemsEl = document.getElementById('context-menu-items');
 }
 
 export function show(x, y, items) {

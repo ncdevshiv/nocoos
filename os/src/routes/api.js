@@ -20,6 +20,22 @@ import registry from '../kernel/registry.js';
 
 const log = logger.make('api');
 
+// Recent client errors buffer. The /api/client-errors POST endpoint pushes
+// events here so monitoring tools (and the e2e-frontend test) can query
+// recent failures without scraping logs. Capacity is small (200) and
+// oldest events are evicted; this is a recent-events ring, not a logger.
+const recentClientErrors = [];
+const RECENT_CLIENT_ERRORS_CAP = 200;
+function recordClientErrorEvent(evt) {
+  recentClientErrors.push(evt);
+  if (recentClientErrors.length > RECENT_CLIENT_ERRORS_CAP) {
+    recentClientErrors.splice(0, recentClientErrors.length - RECENT_CLIENT_ERRORS_CAP);
+  }
+}
+function clearRecentClientErrors() {
+  recentClientErrors.length = 0;
+}
+
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
@@ -118,11 +134,30 @@ export function createApiRouter() {
       kind, message, file, line, col, url, userAgent,
       stack: stack ? stack.split('\n').slice(0, 8).join('\n') : null
     });
+    recordClientErrorEvent({
+      ts: Date.now(),
+      kind, message, file, line, col, url, userAgent,
+      stack: stack ? stack.split('\n').slice(0, 8).join('\n') : null
+    });
     res.status(204).end();
   }));
 
   router.get('/health/lint', (_req, res) => {
     res.json({ enabled: process.env.NOCOOS_LINT === '1', parser: parser.stats() });
+  });
+
+  // Recent client-error events (for monitoring and e2e tests).
+  // Optional ?since=<ms> filter returns only events after the given epoch ms.
+  // Optional ?clear=1 empties the buffer after the response (test helper).
+  router.get('/client-errors/recent', (req, res) => {
+    const since = Number(req.query.since) || 0;
+    const filtered = recentClientErrors.filter((e) => e.ts > since);
+    if (req.query.clear === '1') recentClientErrors.length = 0;
+    res.json({
+      count: filtered.length,
+      total: recentClientErrors.length,
+      events: filtered
+    });
   });
 
   router.post('/auth/login', express.json(), loginRateLimit, asyncHandler(async (req, res) => {
