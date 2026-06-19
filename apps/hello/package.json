@@ -1,0 +1,8 @@
+{
+  "name": "nocoos-hello",
+  "version": "0.1.0",
+  "description": "Hello-world sample app for NocoOS",
+  "private": true,
+  "type": "module",
+  "main": "nocoos.json"
+}

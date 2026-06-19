@@ -256,16 +256,38 @@ export async function open() {
     }
   });
 
+  let currentUninstallJobId = null; // reserved for future use; tracks the active uninstall job
+
   root.querySelector('[data-act="uninstall"]').addEventListener('click', async () => {
     const pkgs = packagesInput.value.trim().split(/\s+/).filter(Boolean);
     if (!pkgs.length) return notify.warn('Uninstall', 'Enter package names to remove.');
     const manager = managerSel.value;
     const cwd = locSel.value;
+    if (!confirm(`Remove ${pkgs.join(', ')} from ${cwd}?\n\nThis will modify ${cwd}/package.json and run ${manager} uninstall.`)) return;
     setOutput(`Removing ${pkgs.join(', ')} via ${manager} in ${cwd}...\n`);
     try {
-      const r = await api.post('/api/pkg/install', { manager, packages: pkgs.map((p) => `${manager === 'npm' ? 'npm' : manager}-uninstall-fallback-not-supported`), cwd, save });
-      appendOutput('\n[note] uninstall UI is limited — re-install with explicit version or use Terminal: `npm rm <pkg>`\n');
-      notify.info('Uninstall', 'Use Terminal for removal: `npm rm <pkg>` or `pnpm remove <pkg>`');
+      const r = await api.post('/api/pkg/uninstall', { manager, packages: pkgs, cwd, save: true });
+      // Open a transient /ws/pkg connection to stream the job's output.
+      // Reusing streamJob from the install handler would require moving it
+      // to module scope; the inline WebSocket avoids that scope change.
+      await new Promise((resolve) => {
+        const token = sessionStorage.getItem('nocoos_token') || '';
+        const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/pkg?id=${encodeURIComponent(r.jobId)}&token=${encodeURIComponent(token)}`;
+        const ws = new WebSocket(url);
+        ws.addEventListener('message', (ev) => {
+          let m; try { m = JSON.parse(ev.data); } catch { return; }
+          if (m.event === 'data') appendOutput(m.text);
+          else if (m.event === 'exit') {
+            appendOutput(`\n[exit code=${m.code ?? '?'}]\n`);
+            if (m.code === 0) notify.success('Uninstalled', `${pkgs.join(', ')} removed.`);
+            else notify.error('Uninstall failed', `Exit code ${m.code}.`);
+            ws.close();
+            resolve();
+          }
+        });
+        ws.addEventListener('error', () => { appendOutput('\n[ws error]\n'); resolve(); });
+      });
+      await loadInstalled();
     } catch (err) { appendOutput(`\n[error] ${err.message}\n`); }
   });
 

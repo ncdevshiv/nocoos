@@ -30,10 +30,18 @@ export function init() {
   });
   document.getElementById('start-action-lock').addEventListener('click', () => {
     closeStartMenu();
-    notify.info('Locked', 'Session is still active. Sign out to end the session.');
+    showLockScreen();
   });
-  document.getElementById('start-action-restart').addEventListener('click', () => {
-    notify.warn('Restart', 'Restarting the OS requires a manual server restart.');
+  document.getElementById('start-action-restart').addEventListener('click', async () => {
+    closeStartMenu();
+    if (!confirm('Restart the NocoOS server?\n\nAll sessions on this instance will be disconnected briefly.')) return;
+    try {
+      await api.post('/api/system/restart');
+      notify.info('Restarting', 'The server is restarting. Reloading in 3s…');
+      setTimeout(() => location.reload(), 3000);
+    } catch (err) {
+      notify.error('Restart failed', err.message || 'Could not restart the server.');
+    }
   });
 
   document.addEventListener('click', (e) => {
@@ -159,6 +167,70 @@ async function launchApp(appId) {
 }
 
 export async function launch(appId) { return launchApp(appId); }
+
+// Lock screen: client-side overlay that hides the desktop. The session token
+// remains valid on the server; the user re-authenticates with their password
+// via POST /api/auth/unlock to dismiss the overlay. Server-side, no session
+// rotation occurs (so an attacker with a stolen token still needs the password).
+let lockOverlayEl = null;
+function ensureLockOverlay() {
+  if (lockOverlayEl) return lockOverlayEl;
+  const overlay = document.createElement('div');
+  overlay.id = 'lock-overlay';
+  overlay.className = 'lock-overlay';
+  overlay.innerHTML = `
+    <div class="lock-card">
+      <div class="lock-title">Locked</div>
+      <div class="lock-sub" id="lock-user">Enter your password to continue.</div>
+      <form id="lock-form">
+        <input class="input" type="password" id="lock-password" autocomplete="current-password" autofocus />
+        <button class="btn" type="submit">Unlock</button>
+      </form>
+      <div class="lock-error" id="lock-error"></div>
+      <button class="btn-ghost" id="lock-signout">Sign out instead</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  lockOverlayEl = overlay;
+  return overlay;
+}
+
+export function showLockScreen() {
+  const overlay = ensureLockOverlay();
+  overlay.classList.add('visible');
+  const errEl = overlay.querySelector('#lock-error');
+  errEl.textContent = '';
+  const pwEl = overlay.querySelector('#lock-password');
+  pwEl.value = '';
+  const user = api.getUser ? api.getUser() : null;
+  if (user) overlay.querySelector('#lock-user').textContent = `Signed in as ${user.displayName || user.username}. Enter your password to continue.`;
+  setTimeout(() => pwEl.focus(), 50);
+
+  const form = overlay.querySelector('#lock-form');
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    const password = pwEl.value;
+    if (!password) { errEl.textContent = 'Password is required.'; return; }
+    try {
+      await api.post('/api/auth/unlock', { password });
+      overlay.classList.remove('visible');
+      pwEl.value = '';
+      errEl.textContent = '';
+    } catch (err) {
+      errEl.textContent = err.message || 'Incorrect password.';
+      pwEl.select();
+    }
+  };
+  form.addEventListener('submit', onSubmit, { once: false });
+  overlay.querySelector('#lock-signout').addEventListener('click', async () => {
+    try { await api.post('/api/auth/logout'); } catch {}
+    logout();
+  }, { once: false });
+}
+
+export function hideLockScreen() {
+  if (lockOverlayEl) lockOverlayEl.classList.remove('visible');
+}
 
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 

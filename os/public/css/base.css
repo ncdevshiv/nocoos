@@ -206,3 +206,34 @@ button:disabled { cursor: not-allowed; opacity: 0.6; }
   font-size: 0.78rem;
   color: var(--muted);
 }
+
+/* Lock screen overlay */
+.lock-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 10, 24, 0.92);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+.lock-overlay.visible { display: flex; }
+.lock-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 2rem 2.4rem;
+  width: min(420px, 92vw);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+.lock-title { font-size: 1.4rem; font-weight: 600; }
+.lock-sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 0.4rem; }
+.lock-card form { display: flex; gap: 0.5rem; }
+.lock-card form .input { flex: 1; }
+.lock-error { color: var(--danger); font-size: 0.85rem; min-height: 1em; }
+.lock-card .btn-ghost { align-self: center; margin-top: 0.4rem; }

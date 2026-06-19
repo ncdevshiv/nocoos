@@ -29,6 +29,7 @@ export async function init() {
   iconsEl = document.getElementById('desktop-icons');
   selectionRect = document.getElementById('selection-rect');
 
+  await applyPrefs();
   await renderDesktopIcons();
   bindWallpaperContext();
   bindSelection();
@@ -42,6 +43,24 @@ export async function init() {
       if (f) f.close();
     }
   });
+}
+
+// Apply persisted user preferences to the DOM. Called once at boot.
+// Theme variables drive CSS; wallpaper is applied as a data attribute so
+// the stylesheet can swap background gradients.
+async function applyPrefs() {
+  let prefs = null;
+  try {
+    const r = await api.get('/api/settings');
+    prefs = r.prefs;
+  } catch {
+    // Defaults baked into the stylesheet will be used if settings can't load.
+    return;
+  }
+  const root = document.documentElement;
+  if (prefs.accent) root.style.setProperty('--accent', prefs.accent);
+  if (prefs.accent2) root.style.setProperty('--accent-2', prefs.accent2);
+  if (prefs.wallpaper) document.body.dataset.wallpaper = prefs.wallpaper;
 }
 
 let cachedApps = null;

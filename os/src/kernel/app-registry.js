@@ -31,7 +31,7 @@ const BUILTIN = [
   {
     id: 'editor',
     name: 'Code Editor',
-    description: 'Edit code with Monaco — syntax highlight and multi-file.',
+    description: 'Edit code with multi-language tokenizer-based syntax highlighting (JS/TS/JSON/HTML/CSS/Python/Bash/Go/Rust/Java/SQL/YAML) and multi-file tabs.',
     icon: 'code',
     category: 'development',
     builtin: true,

@@ -26,7 +26,14 @@ function parseArgs(argv) {
     else if (a === '--manager' || a === '-m') args.manager = true;
     else if (a === '--status' || a === '-s') args.status = true;
     else if (a === '--stop') args.stop = argv[++i];
-    else if (a === '--attach') args.attach = true;
+    else if (a === '--attach') {
+      // --attach [name] — bare flag attaches to "default", explicit name attaches to that instance
+      if (i + 1 < argv.length && !argv[i + 1].startsWith('--')) {
+        args.attach = argv[++i];
+      } else {
+        args.attach = true;
+      }
+    }
     else if (a === '--help' || a === '-h') args.help = true;
   }
   return args;
@@ -42,7 +49,7 @@ Usage:
   node bin/nocoos.js --manager             Launch manager UI (lists running instances)
   node bin/nocoos.js --status              Print running instances and exit
   node bin/nocoos.js --stop <name>         Stop instance <name>
-  node bin/nocoos.js --attach              Attach to existing manager (don't spawn)
+  node bin/nocoos.js --attach [name]       Attach to a running instance's admin shell
 
 Environment:
   NOCOOS_PORT        Port to bind (overridden by --port)
@@ -116,6 +123,75 @@ async function stopInstance(name) {
   console.log(`Process did not exit; check pid ${inst.pid}.`);
 }
 
+// --attach <name>: open an admin WebSocket to a running instance's /ws/shell
+// and pipe stdin/stdout. Reuses the server's admin-only shell binding from
+// Phase 1.6 — a username/password prompt is required, and only admin sessions
+// can attach. Useful for live triage of a remote instance.
+async function attachInstance(name) {
+  const { instances } = await readRegistry();
+  const inst = instances.find((i) => i.name === name);
+  if (!inst) {
+    console.error(`No instance named "${name}" found.`);
+    process.exit(1);
+  }
+  if (!isAlive(inst.pid)) {
+    console.error(`Instance "${name}" is not running.`);
+    process.exit(1);
+  }
+  const WebSocket = (await import('ws')).default;
+  const readline = await import('node:readline');
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });
+
+  const username = await new Promise((resolve) => rl.question('username: ', resolve));
+  const password = await new Promise((resolve) => rl.question('password: ', (a) => resolve(a)));
+
+  const loginRes = await fetch(`http://localhost:${inst.port}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  if (!loginRes.ok) {
+    console.error(`Login failed: ${loginRes.status}`);
+    process.exit(1);
+  }
+  const { token, user } = await loginRes.json();
+  if (!user.isAdmin) {
+    console.error('Attach requires an admin account.');
+    process.exit(1);
+  }
+
+  const ws = new WebSocket(`ws://localhost:${inst.port}/ws/shell?token=${encodeURIComponent(token)}`);
+  ws.on('open', () => {
+    console.log(`[attached to "${name}"]`);
+    console.log('Type code to eval, "exec <cmd>" to run, "exit" to detach.\n');
+  });
+  ws.on('message', (raw) => {
+    try {
+      const m = JSON.parse(raw.toString());
+      if (m.event === 'hello') console.log(m.prompt || '');
+      else if (m.event === 'data') process.stdout.write(m.text);
+      else if (m.event === 'result') console.log('\n=> ' + (m.value !== undefined ? m.value : m.error));
+      else if (m.event === 'exit') console.log(`\n[exit ${m.code}]`);
+      else if (m.event === 'error') console.error('\n[error] ' + m.error);
+    } catch { /* ignore */ }
+  });
+  ws.on('close', () => { console.log('\n[detached]'); process.exit(0); });
+  ws.on('error', (err) => { console.error('ws error:', err.message); process.exit(1); });
+
+  rl.on('line', (line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    if (trimmed === 'exit' || trimmed === 'quit') { ws.close(); return; }
+    if (trimmed.startsWith('exec ')) {
+      const rest = trimmed.slice(5);
+      const parts = rest.split(/\s+/);
+      ws.send(JSON.stringify({ type: 'exec', command: parts[0], args: parts.slice(1) }));
+    } else {
+      ws.send(JSON.stringify({ type: 'eval', code: line }));
+    }
+  });
+}
+
 function spawnServer(args, extraEnv = {}) {
   const env = {
     ...process.env,
@@ -140,6 +216,15 @@ async function main() {
   if (args.help) { printHelp(); return; }
   if (args.status) { await printStatus(); return; }
   if (args.stop) { await stopInstance(args.stop); return; }
+  if (args.attach) {
+    if (typeof args.attach === 'string') {
+      await attachInstance(args.attach);
+    } else {
+      // --attach without a name → attach to default
+      await attachInstance('default');
+    }
+    return;
+  }
 
   if (args.manager) {
     // Manager UI: server with manager-only flag, no real OS instance.

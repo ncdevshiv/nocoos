@@ -129,7 +129,10 @@ class NocoWindow {
 
     const body = document.createElement('div');
     body.className = 'window-body';
-    if (opts_allowSelect(this)) body.classList.add('allow-select');
+    // allowSelect is read from the window's own opts (passed to wm.create)
+    // and applied here. Previously this checked the class via opts_allowSelect,
+    // which was self-referential (the class hadn't been added yet).
+    if (opts.allowSelect) body.classList.add('allow-select');
 
     el.appendChild(header);
     el.appendChild(body);
@@ -361,7 +364,10 @@ class NocoWindow {
 }
 
 function opts_allowSelect(w) {
-  return w.body && w.body.classList && w.body.classList.contains('allow-select');
+  // Backwards-compatible helper. Reads the boolean from w.opts.allowSelect.
+  // Body-class inspection is no longer used because the class is the result,
+  // not the source of truth.
+  return !!(w && w.opts && w.opts.allowSelect);
 }
 
 export function create(opts = {}) {

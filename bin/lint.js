@@ -13,7 +13,8 @@ const parser = (await import('../os/src/kernel/parser.js')).default;
 
 const ROOTS = [
   path.join(ROOT, 'os', 'src'),
-  path.join(ROOT, 'os', 'public', 'js')
+  path.join(ROOT, 'os', 'public', 'js'),
+  path.join(ROOT, 'apps')
 ];
 
 let totalChecked = 0;

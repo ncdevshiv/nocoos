@@ -63,13 +63,23 @@ export async function open() {
     if (active === 'about') return renderAbout();
   }
 
-  function renderAppearance() {
+  let currentPrefs = null;
+
+  async function renderAppearance() {
+    mainEl.innerHTML = '<div class="spinner"></div>';
+    try {
+      const r = await api.get('/api/settings');
+      currentPrefs = r.prefs || {};
+    } catch (err) {
+      notify.error('Settings', `Could not load preferences: ${err.message}`);
+      currentPrefs = { accent: '#7c5cff', accent2: '#22d3ee', wallpaper: 'aurora', animate: true, showIcons: true, confirmDelete: true };
+    }
     mainEl.innerHTML = `
       <div class="settings-section">
         <h3>Theme</h3>
-        <p>Customize the desktop colors.</p>
-        <div class="settings-row"><div class="label">Accent</div><input class="input" type="color" value="#7c5cff" data-key="accent"/></div>
-        <div class="settings-row"><div class="label">Accent 2</div><input class="input" type="color" value="#22d3ee" data-key="accent2"/></div>
+        <p>Customize the desktop colors. Changes save automatically.</p>
+        <div class="settings-row"><div class="label">Accent</div><input class="input" type="color" value="${currentPrefs.accent}" data-key="accent"/></div>
+        <div class="settings-row"><div class="label">Accent 2</div><input class="input" type="color" value="${currentPrefs.accent2}" data-key="accent2"/></div>
         <div class="settings-row"><div class="label">Wallpaper</div><select class="select" data-key="wallpaper">
           <option value="aurora">Aurora</option>
           <option value="midnight">Midnight</option>
@@ -78,13 +88,24 @@ export async function open() {
       </div>
       <div class="settings-section">
         <h3>Behavior</h3>
-        <div class="settings-row"><div class="label">Animate windows</div><div class="switch on" data-key="animate"></div></div>
-        <div class="settings-row"><div class="label">Show desktop icons</div><div class="switch on" data-key="showIcons"></div></div>
-        <div class="settings-row"><div class="label">Confirm on delete</div><div class="switch on" data-key="confirmDelete"></div></div>
+        <div class="settings-row"><div class="label">Animate windows</div><div class="switch ${currentPrefs.animate ? 'on' : ''}" data-key="animate"></div></div>
+        <div class="settings-row"><div class="label">Show desktop icons</div><div class="switch ${currentPrefs.showIcons ? 'on' : ''}" data-key="showIcons"></div></div>
+        <div class="settings-row"><div class="label">Confirm on delete</div><div class="switch ${currentPrefs.confirmDelete ? 'on' : ''}" data-key="confirmDelete"></div></div>
       </div>
     `;
+    const wallpaperEl = mainEl.querySelector('[data-key="wallpaper"]');
+    if (wallpaperEl) wallpaperEl.value = currentPrefs.wallpaper;
     bindSwitches();
     bindInputs();
+  }
+
+  async function persist(key, value) {
+    currentPrefs = { ...currentPrefs, [key]: value };
+    try {
+      await api.put('/api/settings', { [key]: value });
+    } catch (err) {
+      notify.error('Settings', `Failed to save ${key}: ${err.message}`);
+    }
   }
 
   function renderAccounts() {
@@ -92,22 +113,39 @@ export async function open() {
     mainEl.innerHTML = `
       <div class="settings-section">
         <h3>Signed in as</h3>
-        <p>${u ? u.displayName + ' (' + u.username + ')' : 'Unknown'}</p>
+        <p>${u ? escapeHtml(u.displayName) + ' (' + escapeHtml(u.username) + ')' : 'Unknown'}</p>
         <button class="btn-ghost" id="settings-signout">Sign out</button>
       </div>
       <div class="settings-section">
         <h3>Change password</h3>
-        <p>Change your current account password.</p>
-        <label>Old password</label><input class="input" type="password" id="settings-pw-old" />
-        <label>New password</label><input class="input" type="password" id="settings-pw-new" />
+        <p>You'll need to enter your current password to confirm.</p>
+        <label>Current password</label><input class="input" type="password" id="settings-pw-old" autocomplete="current-password" />
+        <label>New password</label><input class="input" type="password" id="settings-pw-new" autocomplete="new-password" />
         <button class="btn" id="settings-pw-save">Save password</button>
       </div>
     `;
     mainEl.querySelector('#settings-signout').addEventListener('click', () => {
       api.post('/api/auth/logout').finally(() => api.logout());
     });
-    mainEl.querySelector('#settings-pw-save').addEventListener('click', () => {
-      notify.info('Password', 'Password changes are not exposed via API in this version. Use the bootstrap to reset.');
+    mainEl.querySelector('#settings-pw-save').addEventListener('click', async () => {
+      const oldEl = mainEl.querySelector('#settings-pw-old');
+      const newEl = mainEl.querySelector('#settings-pw-new');
+      const currentPassword = oldEl.value;
+      const newPassword = newEl.value;
+      if (!currentPassword || !newPassword) {
+        return notify.warn('Password', 'Both fields are required.');
+      }
+      if (newPassword.length < 4) {
+        return notify.warn('Password', 'New password must be at least 4 characters.');
+      }
+      try {
+        await api.post('/api/auth/password', { currentPassword, newPassword });
+        oldEl.value = '';
+        newEl.value = '';
+        notify.success('Password', 'Password updated.');
+      } catch (err) {
+        notify.error('Password', err.message || 'Update failed.');
+      }
     });
   }
 
@@ -162,15 +200,25 @@ export async function open() {
 
   function bindSwitches() {
     mainEl.querySelectorAll('.switch').forEach((sw) => {
-      sw.addEventListener('click', () => sw.classList.toggle('on'));
+      sw.addEventListener('click', async () => {
+        sw.classList.toggle('on');
+        const key = sw.dataset.key;
+        const value = sw.classList.contains('on');
+        await persist(key, value);
+      });
     });
   }
   function bindInputs() {
     mainEl.querySelectorAll('input[type="color"]').forEach((inp) => {
-      inp.addEventListener('input', () => {
+      const applyLive = () => {
         const key = inp.dataset.key;
         document.documentElement.style.setProperty(key === 'accent' ? '--accent' : '--accent-2', inp.value);
-      });
+      };
+      inp.addEventListener('input', applyLive);
+      inp.addEventListener('change', () => persist(inp.dataset.key, inp.value));
+    });
+    mainEl.querySelectorAll('select[data-key]').forEach((sel) => {
+      sel.addEventListener('change', () => persist(sel.dataset.key, sel.value));
     });
   }
 

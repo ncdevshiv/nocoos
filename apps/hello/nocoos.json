@@ -1,0 +1,10 @@
+{
+  "id": "hello",
+  "name": "Hello",
+  "description": "Sample app that demonstrates a user-installed NocoOS app. Renders a friendly greeting inside a window.",
+  "icon": "star",
+  "category": "demo",
+  "entry": "/js/hello/index.js",
+  "pinned": false,
+  "singleton": false
+}

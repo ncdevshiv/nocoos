@@ -201,6 +201,21 @@ class PackageManager extends EventEmitter {
     return { job, dir: targetDir };
   }
 
+  async uninstall({ manager = 'npm', packages, cwd, save = true }) {
+    if (!packages || !packages.length) throw new Error('packages required');
+    const targetDir = cwd || (await this.workspace('workspace'));
+    if (!fs.existsSync(path.join(targetDir, 'package.json'))) {
+      throw new Error('No package.json in workspace — nothing to uninstall');
+    }
+    // npm/pnpm/yarn all accept `uninstall <pkg>`; bun uses `remove`.
+    let args;
+    if (manager === 'bun') args = ['remove', ...packages];
+    else args = ['uninstall', ...packages];
+    if ((manager === 'npm' || manager === 'pnpm') && !save) args.push('--no-save');
+    const job = this.createJob({ manager, args, cwd: targetDir });
+    return { job, dir: targetDir };
+  }
+
   async runScript({ manager = 'npm', cwd, script, args = [] }) {
     const mgrArgs = manager === 'npm' ? ['run', script, ...args] : ['run', script, ...args];
     const job = this.createJob({ manager, args: mgrArgs, cwd });

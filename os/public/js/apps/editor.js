@@ -19,6 +19,7 @@ const LANG_BY_EXT = {
   java: 'java', kt: 'kotlin', swift: 'swift', c: 'c', cpp: 'cpp',
   h: 'cpp', hpp: 'cpp', cs: 'csharp', php: 'php', sh: 'bash',
   yml: 'yaml', yaml: 'yaml', toml: 'ini', ini: 'ini', sql: 'sql',
+  plaintext: 'plaintext', txt: 'plaintext',
   vue: 'html', svelte: 'html'
 };
 
@@ -27,63 +28,256 @@ function langOf(name) {
   return LANG_BY_EXT[ext] || 'plaintext';
 }
 
+// Tokenizer-based highlighter. Walks the input once, emitting tagged spans.
+// Replaces the earlier regex chain with a single-pass tokenizer that
+// properly distinguishes strings/comments/keywords. Supports more languages
+// than the regex approach and is robust to nested structures.
+function escHtml(s) { return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+
+// Keyword sets per language. Order doesn't matter; longest-match wins via
+// word boundaries in the tokenizer.
+const KEYWORDS = {
+  javascript: ['const','let','var','function','return','if','else','for','while','switch','case','break','continue','class','new','this','super','extends','import','export','from','as','async','await','yield','try','catch','finally','throw','typeof','instanceof','in','of','null','undefined','true','false','do','default','void','delete','static','get','set'],
+  typescript: ['const','let','var','function','return','if','else','for','while','switch','case','break','continue','class','new','this','super','extends','import','export','from','as','async','await','yield','try','catch','finally','throw','typeof','instanceof','in','of','null','undefined','true','false','do','default','void','delete','static','get','set','interface','type','enum','public','private','protected','readonly','implements','namespace','declare','abstract','keyof'],
+  python: ['def','class','return','if','elif','else','for','while','import','from','as','try','except','finally','with','yield','async','await','pass','break','continue','in','is','not','and','or','None','True','False','lambda','global','nonlocal','raise','assert'],
+  bash: ['if','then','else','elif','fi','for','while','do','done','case','esac','in','function','return','export','local','echo','cd','ls','rm','cp','mv','source','set','unset','readonly','declare','select','until','time'],
+  go: ['func','var','const','package','import','return','if','else','for','while','switch','case','break','continue','default','type','struct','interface','map','chan','go','defer','select','fallthrough','range','nil','true','false'],
+  rust: ['fn','let','mut','const','static','pub','use','mod','crate','self','super','return','if','else','for','while','loop','match','break','continue','in','as','where','impl','trait','struct','enum','true','false','None','Some','Ok','Err','async','await','move','ref','dyn','unsafe','extern','type'],
+  java: ['public','private','protected','static','final','abstract','class','interface','extends','implements','new','this','super','return','if','else','for','while','do','switch','case','break','continue','default','try','catch','finally','throw','throws','void','null','true','false','package','import','enum'],
+  sql: ['SELECT','FROM','WHERE','JOIN','LEFT','RIGHT','INNER','OUTER','FULL','ON','AS','AND','OR','NOT','NULL','IS','IN','BETWEEN','LIKE','GROUP','BY','ORDER','HAVING','LIMIT','OFFSET','INSERT','INTO','VALUES','UPDATE','SET','DELETE','CREATE','TABLE','INDEX','DROP','ALTER','ADD','COLUMN','PRIMARY','KEY','FOREIGN','REFERENCES','UNION','ALL','DISTINCT','CASE','WHEN','THEN','ELSE','END'],
+  yaml: ['true','false','null','yes','no','on','off']
+};
+
+// Identifier pattern (letter or underscore, then word chars).
+const IDENT = /[A-Za-z_$][\w$]*/;
+
+// Per-language comment and string configurations.
+const LANGS = {
+  javascript: { line: '//', block: ['/*', '*/'], strings: ['"', "'", '`'], keywords: 'javascript' },
+  typescript: { line: '//', block: ['/*', '*/'], strings: ['"', "'", '`'], keywords: 'typescript' },
+  jsx:        { line: '//', block: ['/*', '*/'], strings: ['"', "'", '`'], keywords: 'javascript', html: true },
+  tsx:        { line: '//', block: ['/*', '*/'], strings: ['"', "'", '`'], keywords: 'typescript', html: true },
+  json:       { strings: ['"'], keywords: 'json' },
+  html:       { block: ['<!--', '-->'], strings: ['"', "'"], keywords: null, html: true },
+  xml:        { block: ['<!--', '-->'], strings: ['"', "'"], keywords: null, html: true },
+  css:        { block: ['/*', '*/'], strings: ['"', "'"], keywords: null },
+  scss:       { line: '//', block: ['/*', '*/'], strings: ['"', "'"], keywords: null },
+  less:       { line: '//', block: ['/*', '*/'], strings: ['"', "'"], keywords: null },
+  python:     { line: '#', block: null, strings: ['"', "'"], keywords: 'python', triple: ['"""', "'''"] },
+  bash:       { line: '#', block: null, strings: ['"', "'"], keywords: 'bash' },
+  markdown:   { block: null, strings: null, keywords: null, markdown: true },
+  yaml:       { line: '#', block: null, strings: ['"', "'"], keywords: 'yaml' },
+  sql:        { line: '--', block: ['/*', '*/'], strings: ['"', "'"], keywords: 'sql' },
+  go:         { line: '//', block: ['/*', '*/'], strings: ['`', '"'], keywords: 'go', rawStrings: true },
+  rust:       { line: '//', block: ['/*', '*/'], strings: ['"'], keywords: 'rust', rawStrings: true },
+  java:       { line: '//', block: ['/*', '*/'], strings: ['"', "'"], keywords: 'java' }
+};
+
+// Build a Set for fast keyword lookup.
+const kwSets = {};
+for (const [lang, words] of Object.entries(KEYWORDS)) {
+  kwSets[lang] = new Set(words);
+}
+kwSets.json = new Set(['true', 'false', 'null']);
+
 function highlight(code, lang) {
-  // Lightweight, regex-based highlighter. Output is HTML with span classes.
-  // Not a full parser, but visually improves common languages.
-  const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-  const patterns = [];
+  const conf = LANGS[lang] || {};
+  const kwSet = conf.keywords ? kwSets[conf.keywords] : null;
+  const lines = code.split('\n');
+  const out = [];
 
-  if (lang === 'javascript' || lang === 'typescript' || lang === 'jsx' || lang === 'tsx') {
-    patterns.push([/\/\/[^\n]*/g, 'comment']);
-    patterns.push([/\/\*[\s\S]*?\*\//g, 'comment']);
-    patterns.push([/`(?:\\.|[^`\\])*`/g, 'string']);
-    patterns.push([/'(?:\\.|[^'\\])*'/g, 'string']);
-    patterns.push([/"(?:\\.|[^"\\])*"/g, 'string']);
-    patterns.push([/\b(const|let|var|function|return|if|else|for|while|switch|case|break|continue|class|new|this|super|extends|import|export|from|as|async|await|yield|try|catch|finally|throw|typeof|instanceof|in|of|null|undefined|true|false|do|default)\b/g, 'kw']);
-    patterns.push([/\b\d+(\.\d+)?\b/g, 'num']);
-  } else if (lang === 'json') {
-    patterns.push([/"[^"]*"(?=\s*:)/g, 'key']);
-    patterns.push([/"(?:\\.|[^"\\])*"/g, 'string']);
-    patterns.push([/\b(true|false|null)\b/g, 'kw']);
-    patterns.push([/-?\b\d+(\.\d+)?\b/g, 'num']);
-  } else if (lang === 'html' || lang === 'xml') {
-    patterns.push([/<!--[\s\S]*?-->/g, 'comment']);
-    patterns.push([/<\/?[a-zA-Z][^>]*>/g, 'tag']);
-    patterns.push([/"[^"]*"/g, 'string']);
-    patterns.push([/'[^']*'/g, 'string']);
-  } else if (lang === 'css' || lang === 'scss' || lang === 'less') {
-    patterns.push([/\/\*[\s\S]*?\*\//g, 'comment']);
-    patterns.push([/[.#][a-zA-Z_-][\w-]*/g, 'selector']);
-    patterns.push([/--[a-zA-Z_-][\w-]*/g, 'var']);
-    patterns.push([/\b[a-zA-Z-]+(?=\s*:)/g, 'prop']);
-    patterns.push([/#[0-9a-fA-F]{3,8}\b/g, 'num']);
-    patterns.push([/\b\d+(\.\d+)?(px|em|rem|%|s|ms|deg|fr)?\b/g, 'num']);
-  } else if (lang === 'python') {
-    patterns.push([/#.*/g, 'comment']);
-    patterns.push([/'''[\s\S]*?'''/g, 'string']);
-    patterns.push([/"""[\s\S]*?"""/g, 'string']);
-    patterns.push([/'(?:\\.|[^'\\])*'/g, 'string']);
-    patterns.push([/"(?:\\.|[^"\\])*"/g, 'string']);
-    patterns.push([/\b(def|class|return|if|elif|else|for|while|import|from|as|try|except|finally|with|yield|async|await|pass|break|continue|in|is|not|and|or|None|True|False)\b/g, 'kw']);
-    patterns.push([/\b\d+(\.\d+)?\b/g, 'num']);
-  } else if (lang === 'bash' || lang === 'sh') {
-    patterns.push([/#.*/g, 'comment']);
-    patterns.push([/"(?:\\.|[^"\\])*"/g, 'string']);
-    patterns.push([/'(?:\\.|[^'\\])*'/g, 'string']);
-    patterns.push([/\$\{[^}]+\}/g, 'var']);
-    patterns.push([/\$[a-zA-Z_][\w]*/g, 'var']);
-    patterns.push([/\b(if|then|else|elif|fi|for|while|do|done|case|esac|in|function|return|export|local|echo|cd|ls|rm|cp|mv|export|source)\b/g, 'kw']);
-  } else if (lang === 'markdown') {
-    patterns.push([/^#{1,6}.*$/gm, 'kw']);
-    patterns.push([/`[^`]+`/g, 'string']);
-    patterns.push([/\*\*[^*]+\*\*/g, 'kw']);
+  for (let li = 0; li < lines.length; li++) {
+    out.push(highlightLine(lines[li], conf, kwSet, lang));
+  }
+  return out.join('\n') + '\n';
+}
+
+function highlightLine(line, conf, kwSet, lang) {
+  // Tokenizer that walks the line character by character. Each token is
+  // either a string, comment, number, identifier, or plain text.
+  let i = 0;
+  const len = line.length;
+  let buf = '';
+  let result = '';
+
+  function flush() {
+    if (!buf) return;
+    result += escHtml(buf);
+    buf = '';
   }
 
-  let out = esc(code);
-  for (const [re, cls] of patterns) {
-    out = out.replace(re, (m) => `<span class="hl-${cls}">${m}</span>`);
+  while (i < len) {
+    const rest = line.slice(i);
+
+    // Line comment
+    if (conf.line && rest.startsWith(conf.line)) {
+      flush();
+      result += `<span class="hl-comment">${escHtml(rest)}</span>`;
+      i = len;
+      break;
+    }
+
+    // Block comment start (only on the line where it begins)
+    if (conf.block && rest.startsWith(conf.block[0])) {
+      flush();
+      const end = line.indexOf(conf.block[1], i + conf.block[0].length);
+      if (end !== -1) {
+        result += `<span class="hl-comment">${escHtml(line.slice(i, end + conf.block[1].length))}</span>`;
+        i = end + conf.block[1].length;
+      } else {
+        result += `<span class="hl-comment">${escHtml(rest)}</span>`;
+        i = len;
+      }
+      continue;
+    }
+
+    // Triple-quoted string (Python)
+    if (conf.triple) {
+      let matched = false;
+      for (const q of conf.triple) {
+        if (rest.startsWith(q)) {
+          flush();
+          const end = line.indexOf(q, i + q.length);
+          if (end !== -1) {
+            result += `<span class="hl-string">${escHtml(line.slice(i, end + q.length))}</span>`;
+            i = end + q.length;
+          } else {
+            result += `<span class="hl-string">${escHtml(rest)}</span>`;
+            i = len;
+          }
+          matched = true;
+          break;
+        }
+      }
+      if (matched) continue;
+    }
+
+    // Strings
+    if (conf.strings) {
+      let matchedStr = false;
+      for (const q of conf.strings) {
+        if (rest.startsWith(q)) {
+          flush();
+          // Walk to closing quote, respecting escapes (and raw strings for Go/Rust).
+          let j = i + q.length;
+          while (j < len) {
+            if (conf.rawStrings && q === '`') {
+              // raw string: no escapes, ends at matching backtick
+              if (line[j] === '`') { j++; break; }
+              j++;
+            } else {
+              if (line[j] === '\\' && j + 1 < len) { j += 2; continue; }
+              if (line[j] === q) { j++; break; }
+              j++;
+            }
+          }
+          result += `<span class="hl-string">${escHtml(line.slice(i, j))}</span>`;
+          i = j;
+          matchedStr = true;
+          break;
+        }
+      }
+      if (matchedStr) continue;
+    }
+
+    // Numbers
+    const numMatch = rest.match(/^(?:0[xX][0-9a-fA-F]+|0[bB][01]+|0[oO][0-7]+|\d+\.?\d*(?:[eE][+-]?\d+)?|\.\d+)/);
+    if (numMatch && /[\d.]/.test(line[i])) {
+      // Avoid matching a dot that's part of an identifier or method call.
+      const prev = i > 0 ? line[i - 1] : '';
+      if (i === 0 || !/[A-Za-z_$]/.test(prev)) {
+        flush();
+        result += `<span class="hl-num">${escHtml(numMatch[0])}</span>`;
+        i += numMatch[0].length;
+        continue;
+      }
+    }
+
+    // Identifiers / keywords
+    const idMatch = rest.match(IDENT);
+    if (idMatch && idMatch.index === 0) {
+      const word = idMatch[0];
+      // JSON keys (followed by colon, optionally with whitespace)
+      if (lang === 'json' && /^\s*:/.test(line.slice(i + word.length))) {
+        flush();
+        result += `<span class="hl-key">${escHtml(word)}</span>`;
+        i += word.length;
+        continue;
+      }
+      if (kwSet && kwSet.has(word)) {
+        flush();
+        result += `<span class="hl-kw">${escHtml(word)}</span>`;
+        i += word.length;
+        continue;
+      }
+    }
+
+    // HTML mode: tag delimiters
+    if (conf.html) {
+      if (rest.startsWith('</') || rest.startsWith('<')) {
+        // Don't tokenize < or <= operators in script blocks; only inside
+        // tag positions. Heuristic: highlight if next char is letter or /.
+        const next = line[i + 1];
+        if (next === '/' || /[A-Za-z!]/.test(next)) {
+          flush();
+          const close = line.indexOf('>', i);
+          if (close !== -1) {
+            const tagBody = line.slice(i, close + 1);
+            // Inside-tag attributes
+            const tagInner = tagBody.replace(/^<\/?/, '').replace(/\/?>$/, '');
+            const tagName = tagInner.match(/^[A-Za-z][\w-]*/);
+            let html = '<span class="hl-tag">&lt;';
+            if (line[i + 1] === '/') html += '/';
+            let cursor = i + (line[i + 1] === '/' ? 2 : 1);
+            if (tagName) {
+              html += `<span class="hl-tag-name">${escHtml(tagName[0])}</span>`;
+              cursor += tagName[0].length;
+            }
+            while (cursor < close) {
+              const attrMatch = line.slice(cursor, close).match(/^\s+([A-Za-z_:][\w:.-]*)(=)?/);
+              if (attrMatch) {
+                html += ' ';
+                html += `<span class="hl-attr">${escHtml(attrMatch[1])}</span>`;
+                cursor += attrMatch[0].length - (attrMatch[2] ? 1 : 0);
+                if (attrMatch[2]) {
+                  html += '=';
+                  const v = line.slice(cursor, close);
+                  const vm = v.match(/^("[^"]*"|'[^']*'|[^\s>]+)/);
+                  if (vm) {
+                    html += `<span class="hl-string">${escHtml(vm[0])}</span>`;
+                    cursor += vm[0].length;
+                  }
+                }
+              } else {
+                html += escHtml(line[cursor]);
+                cursor++;
+              }
+            }
+            html += '&gt;</span>';
+            result += html;
+            i = close + 1;
+            continue;
+          }
+        }
+      }
+    }
+
+    // Markdown headings at line start
+    if (conf.markdown && i === 0) {
+      const h = rest.match(/^(#{1,6})\s/);
+      if (h) {
+        flush();
+        result += `<span class="hl-kw">${escHtml(rest)}</span>`;
+        i = len;
+        break;
+      }
+    }
+
+    buf += line[i];
+    i++;
   }
-  return out + '\n';
+  flush();
+  return result;
 }
 
 function injectHlStyles() {
@@ -99,6 +293,7 @@ function injectHlStyles() {
     .hl-comment { color: #64748b; font-style: italic; }
     .hl-num { color: #fbbf24; }
     .hl-tag { color: #22d3ee; }
+    .hl-tag-name { color: #c084fc; font-weight: 600; }
     .hl-attr { color: #fbbf24; }
     .hl-key { color: #22d3ee; }
     .hl-selector { color: #fbbf24; }

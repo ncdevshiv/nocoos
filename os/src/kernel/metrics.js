@@ -187,8 +187,17 @@ const clientErrors = registry.counter('nocoos_client_errors_total', 'Client-side
 const syntaxErrors = registry.counter('nocoos_syntax_errors_total', 'Syntax errors detected by server-side parser', ['file']);
 
 // Live-collected gauges
-registry.gauge('nocoos_uptime_seconds', 'Server uptime in seconds', [], (g) => g.set({}, process.uptime()));
-registry.gauge('nocoos_process_uptime_seconds', 'Process uptime in seconds', [], (g) => g.set({}, process.uptime()));
+// nocoos_uptime_seconds = time since THIS instance acquired its lock
+//                         (resets on instance restart, survives HMR reloads)
+// nocoos_process_uptime_seconds = time since the Node process started
+//                                 (resets on full server restart)
+// The two metrics answer different questions: the former tracks "how long has
+// this NocoOS instance been alive?"; the latter tracks "how long has this
+// process been alive?". They diverge when the process is restarted without
+// releasing the lock (e.g. during a code update that re-execs the server).
+let instanceStartedAt = Date.now();
+registry.gauge('nocoos_uptime_seconds', 'Instance uptime in seconds (since lock acquired)', [], (g) => g.set({}, Math.floor((Date.now() - instanceStartedAt) / 1000)));
+registry.gauge('nocoos_process_uptime_seconds', 'Process uptime in seconds (since Node start)', [], (g) => g.set({}, process.uptime()));
 registry.gauge('nocoos_memory_rss_bytes', 'Node process RSS in bytes', [], (g) => g.set({}, process.memoryUsage().rss));
 registry.gauge('nocoos_memory_heap_used_bytes', 'Node heap used in bytes', [], (g) => g.set({}, process.memoryUsage().heapUsed));
 registry.gauge('nocoos_memory_heap_total_bytes', 'Node heap total in bytes', [], (g) => g.set({}, process.memoryUsage().heapTotal));
@@ -287,4 +296,17 @@ export function text() {
   return registry.text();
 }
 
-export default { middleware, recordAuth, recordWs, recordFs, recordPkg, snapshot, text };
+// Default export mirrors all named exports so a default-import consumer
+// (e.g. `import metrics from './metrics.js'; metrics.recordClientError(...)`)
+// gets the same API surface as a namespace import.
+export default {
+  middleware,
+  recordAuth,
+  recordWs,
+  recordFs,
+  recordPkg,
+  recordClientError,
+  recordSyntaxError,
+  snapshot,
+  text
+};

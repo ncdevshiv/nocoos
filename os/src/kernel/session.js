@@ -29,6 +29,17 @@ function hashPassword(pw, salt) {
   return createHash('sha256').update(`${salt}::${pw}`).digest('hex');
 }
 
+function defaultPrefs() {
+  return {
+    accent: '#7c5cff',
+    accent2: '#22d3ee',
+    wallpaper: 'aurora',
+    animate: true,
+    showIcons: true,
+    confirmDelete: true
+  };
+}
+
 function ensureDefaultUser() {
   const users = loadUsers();
   if (users.length === 0) {
@@ -102,6 +113,29 @@ class SessionManager {
     user.passwordHash = hashPassword(newPassword, user.salt);
     saveUsers(this.users);
     return true;
+  }
+
+  // Per-user preferences (theme, switches). Stored on the user record itself
+  // so settings survive restarts. Defaults are merged in on first read.
+  getPrefs(username) {
+    const user = this.users.find((u) => u.username === username);
+    if (!user) throw new Error('not_found');
+    return { ...defaultPrefs(), ...(user.prefs || {}) };
+  }
+
+  setPrefs(username, partial) {
+    const user = this.users.find((u) => u.username === username);
+    if (!user) throw new Error('not_found');
+    const allowed = Object.keys(defaultPrefs());
+    const merged = { ...defaultPrefs(), ...(user.prefs || {}) };
+    for (const [k, v] of Object.entries(partial || {})) {
+      if (!allowed.includes(k)) continue;
+      if (typeof v !== typeof merged[k]) continue;
+      merged[k] = v;
+    }
+    user.prefs = merged;
+    saveUsers(this.users);
+    return merged;
   }
 
   delete(username) {

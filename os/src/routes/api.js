@@ -146,8 +146,55 @@ export function createApiRouter() {
   }));
 
   router.get('/auth/me', requireAuth, (req, res) => {
-    res.json({ user: { username: req.session.username, displayName: req.session.displayName, isAdmin: req.session.isAdmin } });
+    res.json({
+      user: {
+        username: req.session.username,
+        displayName: req.session.displayName,
+        isAdmin: req.session.isAdmin
+      },
+      prefs: sessionMgr.getPrefs(req.session.username)
+    });
   });
+
+  // Per-user preferences (theme + switches). Persisted on the user record.
+  router.get('/settings', requireAuth, (req, res) => {
+    res.json({ prefs: sessionMgr.getPrefs(req.session.username) });
+  });
+
+  router.put('/settings', requireAuth, express.json(), asyncHandler(async (req, res) => {
+    const prefs = sessionMgr.setPrefs(req.session.username, req.body || {});
+    res.json({ prefs });
+  }));
+
+  // Change the current user's password. Requires the current password as a
+  // second factor — a hijacked session alone is not enough to lock the user out.
+  router.post('/auth/password', requireAuth, express.json(), asyncHandler(async (req, res) => {
+    const { currentPassword, newPassword } = req.body || {};
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'current_and_new_required' });
+    }
+    if (typeof newPassword !== 'string' || newPassword.length < 4) {
+      return res.status(400).json({ error: 'password_too_short' });
+    }
+    const verify = sessionMgr.verify(req.session.username, currentPassword);
+    if (!verify.ok) return res.status(401).json({ error: 'invalid_current_password' });
+    sessionMgr.setPassword(req.session.username, newPassword);
+    metrics.recordAuth('password_change');
+    res.json({ ok: true });
+  }));
+
+  // Re-authenticate the current session without rotating the token. The
+  // session remains valid; only the lock-screen overlay (client-side state)
+  // is dismissed when this returns 200. A hijacked session alone can't
+  // unlock because the attacker still needs the password.
+  router.post('/auth/unlock', requireAuth, express.json(), asyncHandler(async (req, res) => {
+    const { password } = req.body || {};
+    if (!password) return res.status(400).json({ error: 'password_required' });
+    const verify = sessionMgr.verify(req.session.username, password);
+    if (!verify.ok) return res.status(401).json({ error: 'invalid_password' });
+    metrics.recordAuth('unlock');
+    res.json({ ok: true });
+  }));
 
   router.get('/system/info', requireAuth, (_req, res) => {
     res.json(sysInfo.snapshot());
@@ -161,6 +208,24 @@ export function createApiRouter() {
     const result = await procMgr.kill(req.params.id, { signal: req.body?.signal || 'SIGTERM', force: !!req.body?.force });
     res.json(result);
   }));
+
+  // Restart the server. Spawns a fresh process with the same configuration,
+  // returns 202 immediately, then triggers a graceful shutdown. The new
+  // process picks up the same lock and registry entry. Admin-only because
+  // it affects all sessions on this instance.
+  router.post('/system/restart', requireAuth, requireAdmin, (_req, res) => {
+    const env = { ...process.env };
+    const child = spawn(process.execPath, [process.argv[1] || 'os/server.js', ...process.argv.slice(2)], {
+      env,
+      stdio: 'ignore',
+      detached: true
+    });
+    child.unref();
+    res.status(202).json({ ok: true, pid: child.pid, message: 'Restart initiated.' });
+    // Give the response time to flush, then exit. The new process will
+    // acquire the lock within a couple of seconds.
+    setTimeout(() => process.exit(0), 250).unref();
+  });
 
   router.get('/system/tools', requireAuth, asyncHandler(async (_req, res) => {
     res.json({ tools: pkg.listTools() });
@@ -300,6 +365,15 @@ export function createApiRouter() {
       return res.status(400).json({ error: 'packages_required' });
     }
     const { job, dir } = await pkg.install({ manager, packages, cwd, save });
+    res.json({ jobId: job.id, dir });
+  }));
+
+  router.post('/pkg/uninstall', requireAuth, requireAdmin, express.json(), asyncHandler(async (req, res) => {
+    const { manager = 'npm', packages, cwd, save = true } = req.body || {};
+    if (!Array.isArray(packages) || packages.length === 0) {
+      return res.status(400).json({ error: 'packages_required' });
+    }
+    const { job, dir } = await pkg.uninstall({ manager, packages, cwd, save });
     res.json({ jobId: job.id, dir });
   }));
 

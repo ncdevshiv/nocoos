@@ -173,6 +173,17 @@ async function main() {
     }
   }));
 
+  // Serve user-installed apps from the apps/* workspace at /js/<appId>/.
+  // Apps live at <projectRoot>/apps/<appId>/<entry-path>. The manifest's
+  // entry field is interpreted relative to the app directory.
+  const userAppsRoot = path.resolve(config.root, '..', 'apps');
+  app.use('/js', express.static(userAppsRoot, {
+    index: false,
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+    }
+  }));
+
   app.get('/healthz', (_req, res) => res.json({ ok: true }));
 
   app.get('/', (_req, res) => {
@@ -194,6 +205,19 @@ async function main() {
   app.get('/manager', (_req, res) => {
     res.sendFile(path.join(config.publicDir, 'manager.html'));
   });
+
+  // Manager-only mode (NOCOOS_MANAGER=1): the dashboard at / is the manager
+  // UI, and the local desktop/login routes are disabled so this instance
+  // cannot be used as a regular session. Used by `nocoos --manager` to spin
+  // up a dedicated supervisor instance that only exposes the cross-instance
+  // registry + manager dashboard.
+  if (process.env.NOCOOS_MANAGER === '1') {
+    log.info('running in manager-only mode (local desktop/login/boot disabled)');
+    app.get('/', (_req, res) => res.redirect('/manager'));
+    app.get('/login', (_req, res) => res.status(404).send('Manager-only instance'));
+    app.get('/desktop', (_req, res) => res.status(404).send('Manager-only instance'));
+    app.get('/boot', (_req, res) => res.status(404).send('Manager-only instance'));
+  }
 
   app.use((err, _req, res, _next) => {
     log.error('unhandled api error', { err: err.message, stack: err.stack });
