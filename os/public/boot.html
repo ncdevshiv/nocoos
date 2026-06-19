@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en" data-hmr="1">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>NocoOS — Boot</title>
+  <script src="/js/error-reporter.js"></script>
+  <link rel="stylesheet" href="/css/boot.css" />
+</head>
+<body>
+  <div class="boot-screen">
+    <div class="boot-logo">
+      <div class="boot-logo-mark">
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#7c5cff"/>
+              <stop offset="100%" stop-color="#22d3ee"/>
+            </linearGradient>
+          </defs>
+          <rect x="6" y="6" width="52" height="52" rx="12" fill="url(#g)"/>
+          <rect x="18" y="16" width="28" height="6" rx="2" fill="rgba(255,255,255,0.95)"/>
+          <rect x="18" y="26" width="22" height="4" rx="2" fill="rgba(255,255,255,0.8)"/>
+          <rect x="18" y="34" width="26" height="4" rx="2" fill="rgba(255,255,255,0.8)"/>
+          <rect x="18" y="42" width="14" height="4" rx="2" fill="rgba(255,255,255,0.8)"/>
+        </svg>
+      </div>
+      <div class="boot-logo-text">
+        <h1>NocoOS</h1>
+        <p>A Node.js desktop environment</p>
+      </div>
+    </div>
+    <div class="boot-progress">
+      <div class="boot-progress-bar"><div class="boot-progress-fill" id="boot-fill"></div></div>
+      <div class="boot-progress-label" id="boot-label">Starting kernel…</div>
+    </div>
+    <div class="boot-log" id="boot-log"></div>
+  </div>
+  <script src="/js/boot.js"></script>
+  <script src="/js/hmr-client.js"></script>
+</body>
+</html>

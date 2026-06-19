@@ -1,0 +1,124 @@
+:root {
+  color-scheme: dark;
+  --bg-0: #060814;
+  --bg-1: #0c1126;
+  --accent: #7c5cff;
+  --accent-2: #22d3ee;
+  --text: #e6e8f2;
+  --muted: #94a3b8;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  background: radial-gradient(ellipse at top, var(--bg-1) 0%, var(--bg-0) 60%, #03040a 100%);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+.boot-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2.5rem;
+  padding: 2rem;
+}
+
+.boot-logo {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  animation: boot-fade-in 0.6s ease-out;
+}
+
+.boot-logo-mark {
+  width: 88px;
+  height: 88px;
+  filter: drop-shadow(0 0 24px rgba(124, 92, 255, 0.4));
+}
+
+.boot-logo-mark svg {
+  width: 100%;
+  height: 100%;
+}
+
+.boot-logo-text h1 {
+  margin: 0;
+  font-size: 3rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.boot-logo-text p {
+  margin: 0.25rem 0 0 0;
+  font-size: 1.05rem;
+  color: var(--muted);
+}
+
+.boot-progress {
+  width: min(420px, 90vw);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.boot-progress-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.boot-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.boot-progress-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  text-align: center;
+}
+
+.boot-log {
+  width: min(560px, 90vw);
+  max-height: 30vh;
+  overflow: hidden;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  color: rgba(230, 232, 242, 0.5);
+  text-align: left;
+  line-height: 1.55;
+}
+
+.boot-log .log-line {
+  opacity: 0;
+  animation: boot-line-in 0.3s forwards;
+}
+
+@keyframes boot-fade-in {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes boot-line-in {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: translateX(0); }
+}

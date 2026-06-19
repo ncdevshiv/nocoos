@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en" data-hmr="1">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>NocoOS — Sign in</title>
+  <script src="/js/error-reporter.js"></script>
+  <link rel="stylesheet" href="/css/login.css" />
+</head>
+<body>
+  <div class="login-wallpaper">
+    <div class="login-blob blob-1"></div>
+    <div class="login-blob blob-2"></div>
+    <div class="login-blob blob-3"></div>
+  </div>
+
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-avatar">
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <circle cx="32" cy="24" r="12" fill="rgba(255,255,255,0.95)"/>
+          <path d="M10 56c0-12 10-20 22-20s22 8 22 20" fill="rgba(255,255,255,0.95)"/>
+        </svg>
+      </div>
+      <h1 class="login-title">Sign in to NocoOS</h1>
+      <p class="login-subtitle">Welcome back. Choose a user to continue.</p>
+
+      <div class="login-users" id="login-users"></div>
+
+      <form id="login-form" class="login-form" autocomplete="on">
+        <label class="login-field">
+          <span>Username</span>
+          <input id="login-username" name="username" type="text" required autocomplete="username" placeholder="user" />
+        </label>
+        <label class="login-field">
+          <span>Password</span>
+          <input id="login-password" name="password" type="password" required autocomplete="current-password" placeholder="••••••••" />
+        </label>
+        <button type="submit" class="login-submit">Sign in</button>
+        <div class="login-error" id="login-error" role="alert"></div>
+      </form>
+
+      <div class="login-hint">
+        Default account: <code>user</code> / <code>nocoos</code>
+      </div>
+    </div>
+
+    <div class="login-time" id="login-time"></div>
+  </div>
+
+  <script src="/js/login.js"></script>
+  <script src="/js/hmr-client.js"></script>
+</body>
+</html>

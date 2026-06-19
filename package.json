@@ -1,0 +1,23 @@
+{
+  "name": "nocoos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NocoOS — a complete Node.js desktop operating environment with virtual filesystem, window manager, terminal, and package installer.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node os/server.js",
+    "dev": "node --watch os/server.js",
+    "os": "node os/server.js",
+    "lint": "node bin/lint.js",
+    "nocoos": "node bin/nocoos.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {}
+}

@@ -1,0 +1,119 @@
+.window {
+  position: absolute;
+  pointer-events: auto;
+  background: var(--bg-glass-strong);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 320px;
+  min-height: 200px;
+  color: var(--text);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.window.minimized {
+  transform: scale(0.85) translateY(40px);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.window.maximized {
+  border-radius: 0;
+  border: none;
+}
+
+.window.active {
+  border-color: rgba(124, 92, 255, 0.5);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(124, 92, 255, 0.4);
+}
+
+.window-header {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0 0.5rem 0 0.85rem;
+  cursor: default;
+  user-select: none;
+  flex-shrink: 0;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.window-title {
+  flex: 1;
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.window-title .window-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: white;
+  flex-shrink: 0;
+}
+
+.window-title .window-icon svg { width: 12px; height: 12px; }
+
+.window-controls {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.window-control {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.window-control:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+.window-control.close:hover { background: var(--danger); color: white; }
+.window-control svg { width: 14px; height: 14px; }
+
+.window-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.window-body.allow-select { user-select: text; }
+
+.window-resizer {
+  position: absolute;
+  z-index: 2;
+}
+
+.window-resizer.n { top: -3px; left: 6px; right: 6px; height: 6px; cursor: ns-resize; }
+.window-resizer.s { bottom: -3px; left: 6px; right: 6px; height: 6px; cursor: ns-resize; }
+.window-resizer.w { left: -3px; top: 6px; bottom: 6px; width: 6px; cursor: ew-resize; }
+.window-resizer.e { right: -3px; top: 6px; bottom: 6px; width: 6px; cursor: ew-resize; }
+.window-resizer.nw { top: -3px; left: -3px; width: 12px; height: 12px; cursor: nwse-resize; }
+.window-resizer.ne { top: -3px; right: -3px; width: 12px; height: 12px; cursor: nesw-resize; }
+.window-resizer.sw { bottom: -3px; left: -3px; width: 12px; height: 12px; cursor: nesw-resize; }
+.window-resizer.se { bottom: -3px; right: -3px; width: 12px; height: 12px; cursor: nwse-resize; }

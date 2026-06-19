@@ -1,0 +1,17 @@
+node_modules/
+.pnpm-store/
+*.log
+*.err
+.env
+.env.local
+os/data/
+os/data-*/
+os/.nocoos-registry.json
+.nocoos-registry.json
+os/cache/
+apps/*/node_modules/
+.DS_Store
+Thumbs.db
+*.tmp
+.cache/
+

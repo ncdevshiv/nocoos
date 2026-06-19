@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en" data-hmr="1">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>NocoOS — Desktop</title>
+  <script src="/js/error-reporter.js"></script>
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/desktop.css" />
+  <link rel="stylesheet" href="/css/window.css" />
+  <link rel="stylesheet" href="/css/taskbar.css" />
+  <link rel="stylesheet" href="/css/apps.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/xterm-addon-web-links.css" />
+</head>
+<body>
+  <div id="root" class="desktop-root">
+    <!-- Desktop background with icons -->
+    <div class="desktop-wallpaper" id="desktop-wallpaper"></div>
+    <div class="desktop-icons" id="desktop-icons"></div>
+
+    <!-- Selection rectangle for rubber-band selection -->
+    <div class="selection-rect" id="selection-rect" hidden></div>
+
+    <!-- Context menu -->
+    <div class="context-menu" id="context-menu" hidden>
+      <ul id="context-menu-items"></ul>
+    </div>
+
+    <!-- Notification area -->
+    <div class="notification-stack" id="notification-stack"></div>
+
+    <!-- Windows container -->
+    <div class="windows-container" id="windows"></div>
+
+    <!-- Start menu -->
+    <div class="start-menu" id="start-menu" hidden>
+      <div class="start-menu-search">
+        <input type="text" id="start-search" placeholder="Search apps, files, settings…" />
+      </div>
+      <div class="start-menu-body" id="start-body"></div>
+      <div class="start-menu-footer">
+        <button class="start-menu-action" id="start-action-lock">Lock</button>
+        <button class="start-menu-action" id="start-action-logout">Sign out</button>
+        <button class="start-menu-action" id="start-action-restart">Restart</button>
+      </div>
+    </div>
+
+    <!-- Taskbar -->
+    <div class="taskbar" id="taskbar">
+      <button class="taskbar-start" id="taskbar-start" title="Start">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="7" height="7" rx="1.2"/>
+          <rect x="14" y="3" width="7" height="7" rx="1.2"/>
+          <rect x="3" y="14" width="7" height="7" rx="1.2"/>
+          <rect x="14" y="14" width="7" height="7" rx="1.2"/>
+        </svg>
+      </button>
+      <div class="taskbar-search">
+        <input type="text" id="taskbar-search" placeholder="Search…" />
+      </div>
+      <div class="taskbar-apps" id="taskbar-apps"></div>
+      <div class="taskbar-tray">
+        <span class="taskbar-tray-icon" id="tray-wifi" title="Network">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12.55a11 11 0 0 1 14 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>
+          </svg>
+        </span>
+        <span class="taskbar-tray-icon" id="tray-battery" title="Power">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="7" width="18" height="10" rx="2"/><line x1="22" y1="11" x2="22" y2="13"/>
+          </svg>
+        </span>
+        <span class="taskbar-tray-icon" id="tray-cpu" title="CPU"></span>
+        <span class="taskbar-clock" id="tray-clock"></span>
+        <span class="taskbar-show-desktop" id="tray-show-desktop" title="Show desktop"></span>
+      </div>
+    </div>
+
+    <!-- App window host (loaded dynamically) -->
+    <div class="app-templates" id="app-templates" hidden></div>
+
+    <!-- Modal overlay -->
+    <div class="modal-overlay" id="modal-overlay" hidden>
+      <div class="modal-window" id="modal-window"></div>
+    </div>
+  </div>
+
+  <!-- xterm.js and addons from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js"></script>
+
+  <script type="module" src="/js/core/api.js"></script>
+  <script type="module" src="/js/core/notify.js"></script>
+  <script type="module" src="/js/core/icons.js"></script>
+  <script type="module" src="/js/wm.js"></script>
+  <script type="module" src="/js/taskbar.js"></script>
+  <script type="module" src="/js/startmenu.js"></script>
+  <script type="module" src="/js/contextmenu.js"></script>
+  <script type="module" src="/js/desktop.js"></script>
+
+  <script type="module" src="/js/apps/terminal.js"></script>
+  <script type="module" src="/js/apps/filemanager.js"></script>
+  <script type="module" src="/js/apps/editor.js"></script>
+  <script type="module" src="/js/apps/installer.js"></script>
+  <script type="module" src="/js/apps/settings.js"></script>
+  <script type="module" src="/js/apps/monitor.js"></script>
+  <script type="module" src="/js/apps/browser.js"></script>
+  <script type="module" src="/js/apps/about.js"></script>
+  <script type="module" src="/js/apps/launcher.js"></script>
+  <script src="/js/hmr-client.js"></script>
+</body>
+</html>

@@ -1,0 +1,176 @@
+/* Manager UI styles */
+.manager-root {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(ellipse at 20% 20%, rgba(124, 92, 255, 0.18), transparent 55%),
+    radial-gradient(ellipse at 80% 80%, rgba(34, 211, 238, 0.15), transparent 55%),
+    linear-gradient(135deg, #0a0e1f 0%, #050816 100%);
+  color: var(--text);
+  overflow: auto;
+}
+
+.manager-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.manager-brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.manager-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: white;
+  box-shadow: var(--shadow);
+}
+
+.manager-brand h1 {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.manager-actions { display: flex; gap: 0.5rem; }
+
+.manager-main {
+  flex: 1;
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.manager-section {
+  background: var(--bg-glass-strong);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.25rem;
+}
+
+.manager-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.manager-section-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.manager-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.manager-empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+.instance-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.instance-card:hover { border-color: var(--border-strong); background: rgba(255, 255, 255, 0.04); }
+
+.instance-card .instance-status {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.instance-card .instance-status.running { background: #34d399; box-shadow: 0 0 8px #34d399; }
+.instance-card .instance-status.stale { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+.instance-card .instance-status.stopped { background: #94a3b8; }
+
+.instance-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.instance-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.instance-meta {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.instance-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.manager-launch {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.manager-launch label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.manager-launch-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.manager-launch-actions code { flex: 1; color: #c4b5fd; font-size: 0.85rem; }

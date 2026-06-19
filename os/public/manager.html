@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en" data-hmr="1">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>NocoOS — Instance Manager</title>
+  <script src="/js/error-reporter.js"></script>
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/desktop.css" />
+  <link rel="stylesheet" href="/css/manager.css" />
+</head>
+<body>
+  <div id="root" class="manager-root">
+    <header class="manager-header">
+      <div class="manager-brand">
+        <div class="manager-logo">N</div>
+        <div>
+          <h1>Instance Manager</h1>
+          <p class="muted text-sm" id="manager-subtitle">Loading…</p>
+        </div>
+      </div>
+      <div class="manager-actions">
+        <button class="btn-ghost" id="btn-refresh" title="Refresh">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15A9 9 0 1 1 5.64 5.64"/></svg>
+          Refresh
+        </button>
+      </div>
+    </header>
+
+    <main class="manager-main">
+      <section class="manager-section">
+        <div class="manager-section-head">
+          <h2>Running instances</h2>
+          <span class="badge" id="count-badge">0</span>
+        </div>
+        <div class="manager-list" id="instance-list">
+          <div class="manager-empty">No instances yet. Start one with <code>node bin/nocoos.js</code>.</div>
+        </div>
+      </section>
+
+      <section class="manager-section">
+        <div class="manager-section-head">
+          <h2>Launch a new instance</h2>
+        </div>
+        <form class="manager-launch" id="launch-form">
+          <label>
+            <span>Name</span>
+            <input class="input" id="launch-name" placeholder="default" />
+          </label>
+          <label>
+            <span>Port (optional)</span>
+            <input class="input" id="launch-port" placeholder="auto" />
+          </label>
+          <div class="manager-launch-actions">
+            <code class="text-mono text-sm" id="launch-cmd">node bin/nocoos.js --name myapp</code>
+            <button type="button" class="btn" id="btn-copy-cmd">Copy</button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="/js/manager.js"></script>
+</body>
+</html>
